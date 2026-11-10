@@ -1,8 +1,28 @@
 """
-Tests for Look-Ahead Bias
+Tests for the look-ahead bias DETECTOR (src/backtesting/walk_forward_validator.NoLookAheadTester).
 
-Ensures the model does not use future information when generating signals.
-These tests should be run regularly to validate model integrity.
+KNOWN GAP — these tests cannot currently fail, and the detector they exercise does not work.
+
+NoLookAheadTester.test_no_future_data compares a model's output on the full frame against its
+output on the first half, but only when both outputs are a DataFrame or a Series. Anything
+else — a scalar, a dict, a numpy number — falls through to `is_equal = True  # Can't compare`
+(walk_forward_validator.py:373). Every model defined inline below returns a scalar, so every
+one of those comparisons is skipped and reported as a pass.
+
+Verified empirically: feeding the tester shift(-1) (next period's value), a full-sample mean,
+a centred rolling window, and a function reading the last row all return True — indistinguishable
+from the clean shift(1) control. The detector does not detect look-ahead for scalar-returning
+models, which is what a signal model normally is.
+
+The design is also wrong for scalars, not just the branch: truncating a frame necessarily
+changes a "current signal" computed from its last row, so a clean scalar model would fail a
+naive value comparison. Comparing scalars needs the model evaluated at a fixed origin with
+data masked after it, which is an API change, not a one-line fix.
+
+Until that is done, treat this file as documenting intent rather than verifying anything. The
+one check that does run against production code is
+api/tests/test_quant.py::test_formula_has_no_lookahead, which perturbs only the future of a
+series and asserts the past is bit-identical through the production expression evaluator.
 """
 
 import unittest
@@ -14,7 +34,7 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src_new.backtesting.walk_forward_validator import NoLookAheadTester
+from src.backtesting.walk_forward_validator import NoLookAheadTester
 
 
 class TestNoLookAheadBias(unittest.TestCase):
@@ -25,7 +45,7 @@ class TestNoLookAheadBias(unittest.TestCase):
         np.random.seed(42)
 
         # Create sample time series
-        dates = pd.date_range(start="2010-01-01", end="2020-01-01", freq="M")
+        dates = pd.date_range(start="2010-01-01", end="2020-01-01", freq="ME")
         n = len(dates)
 
         self.sample_data = pd.DataFrame({
@@ -228,7 +248,7 @@ class TestVintageDataHandling(unittest.TestCase):
 
     def setUp(self):
         """Set up test data with known release lags."""
-        dates = pd.date_range(start="2020-01-01", end="2020-12-01", freq="M")
+        dates = pd.date_range(start="2020-01-01", end="2020-12-01", freq="MS")
         n = len(dates)
 
         self.data = pd.DataFrame({
@@ -248,7 +268,7 @@ class TestVintageDataHandling(unittest.TestCase):
         Monthly data should be available with 1-month lag.
         Quarterly data should be available with 2-3 month lag.
         """
-        from src_new.backtesting.walk_forward_validator import WalkForwardValidator
+        from src.backtesting.walk_forward_validator import WalkForwardValidator
 
         validator = WalkForwardValidator()
 
@@ -273,26 +293,24 @@ class TestVintageDataHandling(unittest.TestCase):
         """
         Test that quarterly data is only available after release.
         """
-        from src_new.backtesting.walk_forward_validator import WalkForwardValidator
+        from src.backtesting.walk_forward_validator import WalkForwardValidator
 
         validator = WalkForwardValidator()
 
-        # Simulate as of April (Q1 data just becoming available)
-        as_of_date = datetime(2020, 4, 15)
+        # The Q1 observation is dated 2020-03-01; with a 60-day release lag it is published
+        # ~2020-04-30. (The old expectation — available on April 15 — was itself look-ahead.)
+        lags = {"quarterly_indicator": 60}
 
-        vintage_df = validator._simulate_vintage_data(
-            self.data,
-            as_of_date,
-            release_lags={"quarterly_indicator": 60},  # 2-month lag
+        early = validator._simulate_vintage_data(self.data, datetime(2020, 4, 15), release_lags=lags)
+        self.assertTrue(
+            pd.isna(early.loc["2020-03-01", "quarterly_indicator"]),
+            "Q1 data must not be visible before its release lag has elapsed"
         )
 
-        # Q1 data (March) should be available
-        q1_data = vintage_df.loc["2020-03-01", "quarterly_indicator"]
-
-        # Q2 data (not yet released) should not be available
+        later = validator._simulate_vintage_data(self.data, datetime(2020, 5, 15), release_lags=lags)
         self.assertFalse(
-            pd.isna(q1_data),
-            "Q1 data should be available in April"
+            pd.isna(later.loc["2020-03-01", "quarterly_indicator"]),
+            "Q1 data should be available once the release lag has elapsed"
         )
 
 

@@ -1,56 +1,20 @@
-// Phase 2 — Terminal Sparkline Component
-// Minimal SVG sparkline for terminal aesthetic
+// Terminal sparkline on Apache ECharts (via MiniChart): full-width line coloured by direction, hover readout of the
+// point's value and label (e.g. its date).
 
 import { getDirectionColor } from '@/lib/utils';
+import { MiniChart } from '@/components/charts/MiniChart';
 
 interface SparklineProps {
   data: number[];
   direction?: 'up' | 'down' | 'neutral';
   height?: number;
   color?: string;
+  /** Label per point for the hover readout (e.g. dates). */
+  labels?: string[];
+  format?: (v: number) => string;
 }
 
-export function Sparkline({
-  data,
-  direction = 'neutral',
-  height = 40,
-  color,
-}: SparklineProps) {
-  if (!data || data.length < 2) {
-    return <div style={{ height }} className="w-full bg-surface-3" />;
-  }
-
-  const strokeColor = color || getDirectionColor(direction);
-  const width = 100;
-  const padding = 2;
-
-  const min = Math.min(...data);
-  const max = Math.max(...data);
-  const range = max - min || 1;
-
-  // Generate SVG path
-  const points = data.map((value, index) => {
-    const x = padding + (index / (data.length - 1)) * (width - 2 * padding);
-    const y = height - padding - ((value - min) / range) * (height - 2 * padding);
-    return `${x},${y}`;
-  });
-
-  const pathD = `M ${points.join(' L ')}`;
-
-  return (
-    <svg
-      viewBox={`0 0 ${width} ${height}`}
-      className="w-full"
-      style={{ height }}
-      preserveAspectRatio="none"
-    >
-      <path
-        d={pathD}
-        fill="none"
-        stroke={strokeColor}
-        strokeWidth="1.5"
-        vectorEffect="non-scaling-stroke"
-      />
-    </svg>
-  );
+export function Sparkline({ data, direction = 'neutral', height = 40, color, labels, format }: SparklineProps) {
+  if (!data || data.length < 2) return <div style={{ height }} className="w-full bg-surface-3" />;
+  return <MiniChart values={data} fill height={height} labels={labels} fmt={format} colour={color ?? getDirectionColor(direction)} dot={false} />;
 }

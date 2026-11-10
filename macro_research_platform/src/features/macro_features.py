@@ -229,7 +229,7 @@ def compute_diffusion_index(
     Returns:
         Series of diffusion percentages (0-100)
     """
-    from src.data_loader import INDICATORS_BY_GROUP
+    from src.data.data_loader import INDICATORS_BY_GROUP
 
     indicators = INDICATORS_BY_GROUP.get(group, [])
     if not indicators:
@@ -270,7 +270,7 @@ def compute_all_advanced_transforms(
     result = df_transformed.copy()
 
     # Add momentum scores for each group
-    from src.data_loader import INDICATORS_BY_GROUP, GROUPS
+    from src.data.data_loader import INDICATORS_BY_GROUP, GROUPS
 
     for group in GROUPS:
         indicators = INDICATORS_BY_GROUP.get(group, [])

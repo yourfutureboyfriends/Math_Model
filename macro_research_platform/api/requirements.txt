@@ -1,4 +1,8 @@
 # Macro Terminal v8.0 — Production Dependencies
+#
+# For development: install with `pip install -r requirements.txt`
+# For production: use requirements.lock for reproducible builds
+#   `pip install -r requirements.lock`
 
 # Web Framework
 fastapi>=0.110.0
@@ -41,10 +45,16 @@ lightgbm>=4.3.0
 xgboost>=2.0.0
 catboost>=1.2.0
 optuna>=3.5.0
+# api/ml/institutional imports torch at module scope, and api/ml/deep.py inside its model
+# builders. It was only declared in the root requirements.txt, so the README's
+# `pip install -r api/requirements.txt` left the institutional package unimportable.
+# Keep torch and LightGBM out of the same process — see api/tests/conftest.py.
+torch>=2.2
 
 # Data Connectors
 fredapi>=0.5.0
 yfinance>=0.2.35
+holidays>=0.50        # per-region market holidays (market clock)
 finnhub-python>=2.4.19
 python-dotenv>=1.0.0
 httpx>=0.26.0
@@ -90,3 +100,6 @@ black>=24.0.0
 ruff>=0.2.0
 mypy>=1.8.0
 ipython>=8.20.0
+
+# Integrated autonomous session calendar
+exchange-calendars==4.13.2

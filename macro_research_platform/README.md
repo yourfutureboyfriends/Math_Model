@@ -2,6 +2,15 @@
 
 A professional macro research platform for regime-based investing, portfolio construction, and quantitative research.
 
+## Finding your way
+
+- **[docs/CODEBASE_MAP.md](docs/CODEBASE_MAP.md)** — every backend module and UI file with what it does, and where
+  each area lives (regenerate with `python scripts/gen_codebase_map.py`).
+- **[docs/README.md](docs/README.md)** — the documentation index: running the funds, methodology, Quant Lab.
+- **Live API reference** — `http://localhost:8000/docs` once the backend is running.
+- **Conventions** — routers use `api/core/web.py` for identity, capabilities, errors and the audit log; UI panels use
+  `src/lib/http.ts` (`apiCall`) to call the API and `src/lib/format.ts` for numbers.
+
 ## Quick Start
 
 ### Prerequisites
@@ -13,14 +22,17 @@ A professional macro research platform for regime-based investing, portfolio con
 
 ### Backend Setup
 
-```bash
-cd api
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
-pip install -r requirements.txt
+Run everything from the project root (`macro_research_platform/`) — the API imports the
+`api` and `src` packages from there.
 
-# Start the API
-uvicorn main:app --reload --port 3002
+```bash
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+pip install -r api/requirements.txt
+cp .env.example .env       # add FRED_API_KEY
+
+# Start the API (http://localhost:8000)
+uvicorn api.main:socket_app --reload --port 8000
 ```
 
 ### Frontend Setup
@@ -31,7 +43,8 @@ npm install
 npm run dev
 ```
 
-The application will be available at `http://localhost:3000`.
+The application will be available at `http://localhost:5173` (the dev server proxies
+`/api` to the backend). `npm run dev` in the project root starts both together.
 
 ## Architecture
 
@@ -82,9 +95,23 @@ macro_research_platform/
 ### Running Tests
 
 ```bash
-cd api
-pytest
+make test          # offline gate: backend + torch group + frontend
+make test-live     # integration checks against a backend on :8000
 ```
+
+Or individually:
+
+```bash
+make test-backend  # unit + regression (no torch)
+make test-torch    # api/ml/institutional tests (torch)
+make test-frontend # cd frontend && npx vitest run
+```
+
+The backend runs as two processes on purpose. torch ships `libiomp5.dylib` and LightGBM resolves
+Homebrew's `libomp.dylib`; both export the same OpenMP symbols and dyld binds them by flat lookup,
+so fitting a LightGBM model after torch is loaded segfaults the interpreter — at a test that looks
+unrelated to the cause and moves between runs. `api/tests/conftest.py` fails the run with an
+explanation rather than letting it crash if one process ever collects both groups.
 
 ### Code Style
 

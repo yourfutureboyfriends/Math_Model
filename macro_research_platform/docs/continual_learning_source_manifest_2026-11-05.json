@@ -1,0 +1,47 @@
+[
+  {
+    "repo": "microsoft/qlib",
+    "commit": "54355232463878d2eebb91fe0ee5fa7fa1f5976c",
+    "committed_at": "2026-10-08T10:15:27Z",
+    "reviewed_at": "2026-11-05",
+    "reviewed_paths": [
+      "qlib/workflow/online/manager.py",
+      "qlib/workflow/online/strategy.py",
+      "qlib/contrib/meta/data_selection/model.py",
+      "qlib/contrib/meta/data_selection/net.py"
+    ],
+    "execution": "Source inspection only; not installed or executed"
+  },
+  {
+    "repo": "SJTU-DMTai/DoubleAdapt",
+    "commit": "e20b6e46ccbd2b6b8180ff3db62f68b16721684c",
+    "committed_at": "2024-12-25T09:06:01Z",
+    "reviewed_at": "2026-11-05",
+    "reviewed_paths": [
+      "src/model.py",
+      "src/net.py"
+    ],
+    "execution": "Source inspection only; not installed or executed"
+  },
+  {
+    "repo": "shibhansh/loss-of-plasticity",
+    "commit": "3138c5556859e0e2918d40f113b40699b6575cfa",
+    "committed_at": "2026-10-26T18:15:26Z",
+    "reviewed_at": "2026-11-05",
+    "reviewed_paths": [
+      "lop/algos/gnt.py",
+      "lop/algos/cbp_linear.py"
+    ],
+    "execution": "Source inspection only; not installed or executed"
+  },
+  {
+    "repo": "jpmorganchase/abides-jpmc-public",
+    "commit": "f9cbe51342b7dedd9587e4e069040d68a5c6477f",
+    "committed_at": "2023-12-13T08:44:09Z",
+    "reviewed_at": "2026-11-05",
+    "reviewed_paths": [
+      "abides-gym/abides_gym/envs/markets_execution_environment_v0.py"
+    ],
+    "execution": "Source inspection only; not installed or executed"
+  }
+]

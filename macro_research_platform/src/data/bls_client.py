@@ -131,7 +131,7 @@ class BlsClient(BaseDataClient):
         """Generate sample BLS data."""
         import numpy as np
 
-        dates = pd.date_range(end=datetime.now(), periods=120, freq="M")
+        dates = pd.date_range(end=datetime.now(), periods=120, freq="ME")
 
         # Generate appropriate values based on series type
         if "UNRATE" in series_id or "UNEMPLOYMENT" in series_id.upper():

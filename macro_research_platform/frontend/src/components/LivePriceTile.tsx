@@ -1,3 +1,4 @@
+// A ticker tile updating from the live-price WebSocket.
 import React, { useRef, useEffect, useState } from "react";
 import { useMarketStream } from "@/hooks/useMarketStream";
 import styles from "./LivePriceTile.module.css";

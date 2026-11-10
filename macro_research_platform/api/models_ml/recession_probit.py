@@ -27,7 +27,7 @@ import pandas as pd
 import statsmodels.api as sm
 from statsmodels.discrete.discrete_model import Probit
 from fredapi import Fred
-import sqlite3, os, logging
+import os, logging
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
@@ -44,6 +44,25 @@ NBER_RECESSIONS = [
     ('2020-02-01', '2020-04-01'),
 ]
 
+# Bumped whenever the training target's definition changes, so a persisted fit from an earlier
+# definition is refused rather than served. 1 = recession at exactly t+horizon (the old
+# shift(-horizon) label); 2 = any recession month in (t, t+horizon].
+LABEL_VERSION = 2
+
+
+def recession_window_label(recession, horizon: int):
+    """1 where any month in (t, t+horizon] is a recession month; NaN where the window is incomplete.
+
+    The Federal Reserve staff definition of a horizon-ahead recession, and the same event that
+    api/research_indicators._recession_ahead labels for the ensemble and the challenger — so all
+    three models are trained to predict one thing. The point alternative, recession at exactly
+    t+horizon, is a different and much rarer event: over 1960-2025 it disagrees with this on 99 of
+    780 months and halves the base rate, and it marks all of 2001 and 2020 as negatives in those
+    years, so a model trained on it never saw two of the recessions it exists to predict.
+    """
+    shifted = pd.concat([recession.shift(-k) for k in range(1, horizon + 1)], axis=1)
+    return shifted.max(axis=1).where(shifted.notna().all(axis=1))
+
 
 class RecessionProbitModel:
     """
@@ -58,6 +77,18 @@ class RecessionProbitModel:
         self.fitted    = False
         self.fit_stats: dict = {}
         self.last_trained: str | None = None
+        self.label_version = LABEL_VERSION
+
+    @property
+    def label_definition(self) -> str:
+        """The event this model's probability answers, in words.
+
+        Defined once so the fit record and every prediction cannot drift apart. "12 months" on
+        its own is ambiguous between "in recession at month t+12" and "in recession at some point
+        in the next 12 months"; the two differ on 99 of 780 months since 1960, and the second is
+        what this model trains on and what the ensemble and challenger beside it also use.
+        """
+        return f'any recession month in (t, t+{self.horizon}]'
 
     def _nber_indicator(
         self, index: pd.DatetimeIndex
@@ -74,9 +105,10 @@ class RecessionProbitModel:
         Shifts recession indicator back by horizon months
         so model predicts recession horizon months ahead.
         """
-        api_key = os.getenv('FRED_API_KEY', '')
+        from api.config import FRED_API_KEY
+        api_key = FRED_API_KEY or os.getenv('FRED_API_KEY', '')
         if not api_key:
-            raise ValueError('FRED_API_KEY not set')
+            raise ValueError('FRED_API_KEY not set in .env or config')
 
         fred = Fred(api_key=api_key)
         raw  = {}
@@ -110,10 +142,9 @@ class RecessionProbitModel:
         else:
             df['recession'] = self._nber_indicator(df.index)
 
-        # Shift recession BACK so we predict horizon ahead
-        df['recession_future'] = df['recession'].shift(
-            -self.horizon
-        )
+        # Label: 1 if ANY month in (t, t+horizon] is a recession month — see recession_window_label
+        # for why this is the window definition and not recession at exactly t+horizon.
+        df['recession_future'] = recession_window_label(df['recession'], self.horizon)
 
         df = df.dropna(subset=['recession_future', 'spread'])
         logger.info(
@@ -156,6 +187,11 @@ class RecessionProbitModel:
                 coefs.iloc[2] if len(coefs) > 2 else 0
             )), 4),
             'horizon_months': self.horizon,
+            # So a reader can tell which event this probability answers. The point definition
+            # (recession at exactly t+horizon) and this window one differ on 99 of 780 months,
+            # and the ensemble beside this model uses the window too.
+            'label_version': self.label_version,
+            'label_definition': self.label_definition,
             'trained_at':  self.last_trained,
             'papers': [
                 'Estrella & Mishkin (1998) REStat 80(1)',
@@ -233,15 +269,20 @@ class RecessionProbitModel:
             'probability':     round(prob, 4),
             'probability_pct': round(prob * 100, 1),
             'signal':          signal,
-            'ci_lower':        round(ci_lo, 4),
-            'ci_upper':        round(ci_hi, 4),
+            'ci_lower':        None if np.isnan(ci_lo) else round(ci_lo, 4),
+            'ci_upper':        None if np.isnan(ci_hi) else round(ci_hi, 4),
             'interpretation':  note,
             'inputs': {
                 'yield_spread':   round(spread, 3),
                 'fed_funds_rate': round(fed_funds, 3),
             },
             'model':    'Probit',
-            'horizon':  '12 months',
+            'horizon':  f'{self.horizon} months',
+            # "12 months" on its own does not say which event is being predicted. This is the
+            # probability of any recession month inside the window, not of month t+12 specifically
+            # — the two differ on 99 of 780 months, so the number is not interpretable without it.
+            'label_definition': self.label_definition,
+            'label_version': self.label_version,
             'paper':    'Estrella & Mishkin (1998)',
             'pseudo_r2': self.fit_stats.get('pseudo_r2'),
         }
@@ -268,9 +309,11 @@ class RecessionProbitModel:
                 float(np.percentile(probs, 2.5)),
                 float(np.percentile(probs, 97.5)),
             )
-        except Exception:
-            p = self.predict(spread, fed_funds)['probability']
-            return max(0.0, p - 0.06), min(1.0, p + 0.06)
+        except Exception as e:
+            # Don't call predict() here — predict() calls this method, so a persistent
+            # failure would recurse forever. Report the CI as unavailable instead.
+            logger.warning(f'[PROBIT] CI bootstrap failed: {e}')
+            return float('nan'), float('nan')
 
     def _fallback(
         self,
@@ -304,6 +347,16 @@ class RecessionProbitModel:
             'ci_upper':       min(1.0, round(prob+0.07, 4)),
             'interpretation': 'Rule-based (Probit not fitted)',
             'model':          'Fallback',
+            # The ladder above is the published 12-month table, so this path declares 12 months
+            # literally rather than inheriting self.horizon, which could disagree with it. It is
+            # still the same window event the fitted model targets — "any month in the next 12",
+            # not "month t+12" — and declaring it on both paths matters because
+            # api/calculations/metrics.py serves this one as the second-choice headline whenever
+            # the ensemble times out, and nothing downstream could previously tell which model, or
+            # which question, produced the number.
+            'horizon':          '12 months',
+            'label_definition': 'any recession month in (t, t+12]',
+            'label_version':    self.label_version,
             'paper':          'Estrella & Mishkin (1998) Table 1',
         }
 
@@ -311,19 +364,88 @@ class RecessionProbitModel:
 # ── Singleton ─────────────────────────────────────────────
 
 _probit: RecessionProbitModel | None = None
+_last_fit_attempt: float = 0.0
+_RETRY_SECONDS = 1800
+
+
+_fit_lock = __import__("threading").Lock()
 
 
 def get_recession_probit() -> RecessionProbitModel:
-    """Return fitted singleton. Fits on first call."""
-    global _probit
-    if _probit is None:
-        _probit = RecessionProbitModel()
-        try:
-            _probit.fit()
-        except Exception as e:
-            logger.error(
-                f'[PROBIT] Startup fit failed: {e}'
-            )
+    """Return the fitted singleton. Fits on first call; if a fit failed (e.g. FRED was
+    unreachable), retries at most every 30 minutes instead of staying unfitted.
+
+    Single-flight: concurrent callers (several dashboard builds at startup) wait for one fit
+    instead of each starting its own — duplicate fits slowed every build past its timeout, so
+    the headline recession probability silently switched models (6.2% vs 8.2%)."""
+    global _probit, _last_fit_attempt
+    import time
+    if _probit is not None and _probit.fitted:
+        return _probit
+    with _fit_lock:
+        if _probit is not None and (_probit.fitted or time.time() - _last_fit_attempt < _RETRY_SECONDS):
+            return _probit
+        return _fit_locked()
+
+
+_PERSIST_PATH = __import__("pathlib").Path(__file__).resolve().parents[2] / "data" / "processed" / "recession_probit.pkl"
+_PERSIST_MAX_AGE = 30 * 24 * 3600
+
+
+def _save(model: "RecessionProbitModel") -> None:
+    import pickle
+    try:
+        _PERSIST_PATH.parent.mkdir(parents=True, exist_ok=True)
+        tmp = _PERSIST_PATH.with_suffix(".tmp")
+        tmp.write_bytes(pickle.dumps(model))
+        tmp.replace(_PERSIST_PATH)
+    except Exception as e:
+        logger.debug(f"[PROBIT] could not persist model: {e}")
+
+
+def _load_persisted() -> "RecessionProbitModel | None":
+    """Last successfully fitted model (≤ 30 days old) — used when a refit fails because the
+    data source is unreachable, so the headline doesn't switch models during an outage.
+
+    A fit stamped with a different label_version is refused: its coefficients answer a different
+    question, and serving them silently during an outage is worse than having no fallback at all.
+    Pickles written before versioning existed carry no attribute and count as version 1.
+    """
+    import pickle, time
+    try:
+        if time.time() - _PERSIST_PATH.stat().st_mtime > _PERSIST_MAX_AGE:
+            return None
+        m = pickle.loads(_PERSIST_PATH.read_bytes())
+        if not getattr(m, "fitted", False):
+            return None
+        found = getattr(m, "label_version", 1)
+        if found != LABEL_VERSION:
+            logger.warning("[PROBIT] discarding persisted fit from label version %s (current %s)",
+                           found, LABEL_VERSION)
+            return None
+        return m
+    except Exception:
+        return None
+
+
+def _fit_locked() -> RecessionProbitModel:
+    global _probit, _last_fit_attempt
+    import time
+    _last_fit_attempt = time.time()
+    model = RecessionProbitModel()
+    try:
+        model.fit()
+    except Exception as e:
+        logger.error(f'[PROBIT] Fit failed (will retry in {_RETRY_SECONDS // 60} min): {e}')
+    if model.fitted:
+        _save(model)
+    else:
+        persisted = _load_persisted()
+        if persisted is not None:
+            logger.warning(f"[PROBIT] using last fitted model from {persisted.last_trained}")
+            model = persisted
+    if _probit is None or model.fitted:
+        _probit = model
     return _probit
 
 

@@ -5,6 +5,7 @@ from pydantic import BaseModel
 
 
 class User(BaseModel):
+    """A signed-in user as returned to the UI: username, role, display name and permissions."""
     username: str
     role: str
     display_name: str
@@ -12,11 +13,13 @@ class User(BaseModel):
 
 
 class TokenData(BaseModel):
+    """Claims read from a token."""
     username: Optional[str] = None
     role: Optional[str] = None
 
 
 class LoginResponse(BaseModel):
+    """Response to a successful sign-in."""
     access_token: str
     token_type: str
     role: str

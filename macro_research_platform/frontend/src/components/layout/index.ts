@@ -1,3 +1,4 @@
+// Layout components re-exported for import from '@/components/layout'.
 export { Header } from './Header';
 export { Topbar } from './Topbar';
 export { Sidebar } from './Sidebar';

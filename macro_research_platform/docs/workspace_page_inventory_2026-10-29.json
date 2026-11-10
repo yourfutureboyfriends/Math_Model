@@ -1,0 +1,4605 @@
+{
+  "date": "2026-10-29",
+  "method": "Static area registry → mounted section → local JSX component graph; financial logic is not re-certified by this UI inventory.",
+  "counts": {
+    "macro": 47,
+    "trading": 28,
+    "quant": 10,
+    "markets": 94,
+    "pe": 4
+  },
+  "pages": [
+    {
+      "workspace": "macro",
+      "group": "OVERVIEW",
+      "id": "macro-model",
+      "entries": [
+        "MacroModelSection"
+      ],
+      "components": [
+        {
+          "name": "MacroModelSection",
+          "file": "src/components/sections/model/MacroModelSection.tsx",
+          "line": 100,
+          "innerSections": [
+            "Parameters",
+            "Refresh",
+            "Economic state",
+            "Publication lag applied, months",
+            "Regime probabilities — next month",
+            "Expected returns & portfolio",
+            "Portfolio",
+            "Black–Litterman posterior, annualised excess return",
+            "Regime-conditional model view",
+            "Orders",
+            "Scrollable data table",
+            "Time machine — what the model said then"
+          ]
+        },
+        {
+          "name": "WorldStrip",
+          "file": "src/components/sections/model/MacroModelSection.tsx",
+          "line": 37,
+          "innerSections": [
+            "Economy"
+          ]
+        },
+        {
+          "name": "Step",
+          "file": "src/components/sections/model/MacroModelSection.tsx",
+          "line": 87,
+          "innerSections": []
+        },
+        {
+          "name": "LineChart",
+          "file": "src/components/ui/LineChart.tsx",
+          "line": 88,
+          "innerSections": [
+            "Period",
+            "Interval",
+            "Custom range",
+            "From",
+            "To"
+          ]
+        },
+        {
+          "name": "LineChartCore",
+          "file": "src/components/ui/LineChart.tsx",
+          "line": 182,
+          "innerSections": []
+        },
+        {
+          "name": "TimeMachine",
+          "file": "src/components/sections/model/TimeMachine.tsx",
+          "line": 53,
+          "innerSections": [
+            "Previous month",
+            "Next month",
+            "Month",
+            "Hindsight: from the factors as they are known today",
+            "Hindsight: realised returns over the following 12 months, net of costs"
+          ]
+        },
+        {
+          "name": "QuadrantMap",
+          "file": "src/components/sections/model/TimeMachine.tsx",
+          "line": 26,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/sections/model/MacroModelSection.tsx",
+        "src/components/ui/LineChart.tsx",
+        "src/components/sections/model/TimeMachine.tsx"
+      ]
+    },
+    {
+      "workspace": "macro",
+      "group": "OVERVIEW",
+      "id": "morning-brief",
+      "entries": [
+        "MorningBriefSection"
+      ],
+      "components": [
+        {
+          "name": "MorningBriefSection",
+          "file": "src/components/sections/macro/MorningBriefSection.tsx",
+          "line": 51,
+          "innerSections": []
+        },
+        {
+          "name": "BriefDelivery",
+          "file": "src/components/sections/macro/MorningBriefSection.tsx",
+          "line": 392,
+          "innerSections": []
+        },
+        {
+          "name": "BriefFacts",
+          "file": "src/components/sections/macro/MorningBriefSection.tsx",
+          "line": 332,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/sections/macro/MorningBriefSection.tsx"
+      ]
+    },
+    {
+      "workspace": "macro",
+      "group": "OVERVIEW",
+      "id": "economic-calendar",
+      "entries": [
+        "EventCalendarSection"
+      ],
+      "components": [
+        {
+          "name": "EventCalendarSection",
+          "file": "src/components/sections/market/EventCalendarSection.tsx",
+          "line": 76,
+          "innerSections": [
+            "Calendar scope",
+            "Scrollable data table"
+          ]
+        },
+        {
+          "name": "Badge",
+          "file": "src/components/ui/Badge.tsx",
+          "line": 20,
+          "innerSections": []
+        },
+        {
+          "name": "Card",
+          "file": "src/components/ui/Card.tsx",
+          "line": 15,
+          "innerSections": []
+        },
+        {
+          "name": "EcoGlobalView",
+          "file": "src/components/markets/DataViews.tsx",
+          "line": 134,
+          "innerSections": []
+        },
+        {
+          "name": "Loading",
+          "file": "src/components/markets/shared.tsx",
+          "line": 197,
+          "innerSections": []
+        },
+        {
+          "name": "ErrorBox",
+          "file": "src/components/markets/shared.tsx",
+          "line": 208,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/sections/market/EventCalendarSection.tsx",
+        "src/components/ui/Badge.tsx",
+        "src/components/ui/Card.tsx",
+        "src/components/markets/DataViews.tsx",
+        "src/components/markets/shared.tsx"
+      ]
+    },
+    {
+      "workspace": "macro",
+      "group": "OVERVIEW",
+      "id": "master-signal",
+      "entries": [
+        "MasterSignalSection"
+      ],
+      "components": [
+        {
+          "name": "MasterSignalSection",
+          "file": "src/components/sections/signals/MasterSignalSection.tsx",
+          "line": 15,
+          "innerSections": []
+        },
+        {
+          "name": "AnimatedValue",
+          "file": "src/components/ui/AnimatedValue.tsx",
+          "line": 32,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/sections/signals/MasterSignalSection.tsx",
+        "src/components/ui/AnimatedValue.tsx"
+      ]
+    },
+    {
+      "workspace": "macro",
+      "group": "OVERVIEW",
+      "id": "key-metrics",
+      "entries": [
+        "KeyMetricsSection"
+      ],
+      "components": [
+        {
+          "name": "KeyMetricsSection",
+          "file": "src/components/sections/macro/KeyMetricsSection.tsx",
+          "line": 34,
+          "innerSections": []
+        },
+        {
+          "name": "MetricCard",
+          "file": "src/components/ui/MetricCard.tsx",
+          "line": 43,
+          "innerSections": []
+        },
+        {
+          "name": "AnomalyBadge",
+          "file": "src/components/ui/AnomalyBadge.tsx",
+          "line": 16,
+          "innerSections": []
+        },
+        {
+          "name": "DataLineagePopover",
+          "file": "src/components/ui/DataLineagePopover.tsx",
+          "line": 31,
+          "innerSections": [
+            "Data lineage"
+          ]
+        },
+        {
+          "name": "Row",
+          "file": "src/components/ui/DataLineagePopover.tsx",
+          "line": 90,
+          "innerSections": []
+        },
+        {
+          "name": "Sparkline",
+          "file": "src/components/ui/Sparkline.tsx",
+          "line": 16,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/sections/macro/KeyMetricsSection.tsx",
+        "src/components/ui/MetricCard.tsx",
+        "src/components/ui/AnomalyBadge.tsx",
+        "src/components/ui/DataLineagePopover.tsx",
+        "src/components/ui/Sparkline.tsx"
+      ]
+    },
+    {
+      "workspace": "macro",
+      "group": "OVERVIEW",
+      "id": "event-dataset",
+      "entries": [
+        "EventDatasetSection"
+      ],
+      "components": [
+        {
+          "name": "EventDatasetSection",
+          "file": "src/components/sections/macro/EventDatasetSection.tsx",
+          "line": 14,
+          "innerSections": [
+            "Scrollable data table"
+          ]
+        }
+      ],
+      "files": [
+        "src/components/sections/macro/EventDatasetSection.tsx"
+      ]
+    },
+    {
+      "workspace": "macro",
+      "group": "OVERVIEW",
+      "id": "anomalies",
+      "entries": [
+        "AnomaliesStripSection"
+      ],
+      "components": [
+        {
+          "name": "AnomaliesStripSection",
+          "file": "src/components/sections/macro/AnomaliesStripSection.tsx",
+          "line": 15,
+          "innerSections": [
+            "Refresh"
+          ]
+        },
+        {
+          "name": "AnomalyBadge",
+          "file": "src/components/ui/AnomalyBadge.tsx",
+          "line": 16,
+          "innerSections": []
+        },
+        {
+          "name": "DataLineagePopover",
+          "file": "src/components/ui/DataLineagePopover.tsx",
+          "line": 31,
+          "innerSections": [
+            "Data lineage"
+          ]
+        },
+        {
+          "name": "Row",
+          "file": "src/components/ui/DataLineagePopover.tsx",
+          "line": 90,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/sections/macro/AnomaliesStripSection.tsx",
+        "src/components/ui/AnomalyBadge.tsx",
+        "src/components/ui/DataLineagePopover.tsx"
+      ]
+    },
+    {
+      "workspace": "macro",
+      "group": "OVERVIEW",
+      "id": "regime",
+      "entries": [
+        "RegimeSection"
+      ],
+      "components": [
+        {
+          "name": "RegimeSection",
+          "file": "src/components/sections/macro/RegimeSection.tsx",
+          "line": 15,
+          "innerSections": [
+            "Scrollable data table"
+          ]
+        },
+        {
+          "name": "SkeletonCard",
+          "file": "src/components/ui/Skeleton.tsx",
+          "line": 131,
+          "innerSections": []
+        },
+        {
+          "name": "SkeletonText",
+          "file": "src/components/ui/Skeleton.tsx",
+          "line": 25,
+          "innerSections": []
+        },
+        {
+          "name": "Skeleton",
+          "file": "src/components/ui/Skeleton.tsx",
+          "line": 15,
+          "innerSections": []
+        },
+        {
+          "name": "ComputedTag",
+          "file": "src/components/ui/ComputedTag.tsx",
+          "line": 20,
+          "innerSections": []
+        },
+        {
+          "name": "SourceTag",
+          "file": "src/components/ui/SourceTag.tsx",
+          "line": 28,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/sections/macro/RegimeSection.tsx",
+        "src/components/ui/Skeleton.tsx",
+        "src/components/ui/ComputedTag.tsx",
+        "src/components/ui/SourceTag.tsx"
+      ]
+    },
+    {
+      "workspace": "macro",
+      "group": "OVERVIEW",
+      "id": "regime-playbook",
+      "entries": [
+        "RegimePlaybookSection"
+      ],
+      "components": [
+        {
+          "name": "RegimePlaybookSection",
+          "file": "src/components/sections/macro/RegimePlaybookSection.tsx",
+          "line": 202,
+          "innerSections": [
+            "TACTICAL ALLOCATION",
+            "FACTOR PREFERENCES",
+            "RISK GUIDELINES",
+            "TRADE SETUP"
+          ]
+        },
+        {
+          "name": "Badge",
+          "file": "src/components/ui/Badge.tsx",
+          "line": 20,
+          "innerSections": []
+        },
+        {
+          "name": "Card",
+          "file": "src/components/ui/Card.tsx",
+          "line": 15,
+          "innerSections": []
+        },
+        {
+          "name": "HeatGrid",
+          "file": "src/components/ui/HeatGrid.tsx",
+          "line": 22,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/sections/macro/RegimePlaybookSection.tsx",
+        "src/components/ui/Badge.tsx",
+        "src/components/ui/Card.tsx",
+        "src/components/ui/HeatGrid.tsx"
+      ]
+    },
+    {
+      "workspace": "macro",
+      "group": "OVERVIEW",
+      "id": "market-clock",
+      "entries": [
+        "MarketClockSection"
+      ],
+      "components": [
+        {
+          "name": "MarketClockSection",
+          "file": "src/components/sections/market/MarketClockSection.tsx",
+          "line": 87,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/sections/market/MarketClockSection.tsx"
+      ]
+    },
+    {
+      "workspace": "macro",
+      "group": "OVERVIEW",
+      "id": "global-markets",
+      "entries": [
+        "GlobalMarketsSection"
+      ],
+      "components": [
+        {
+          "name": "GlobalMarketsSection",
+          "file": "src/components/sections/market/GlobalMarketsSection.tsx",
+          "line": 21,
+          "innerSections": [
+            "Refresh"
+          ]
+        },
+        {
+          "name": "DataLineagePopover",
+          "file": "src/components/ui/DataLineagePopover.tsx",
+          "line": 31,
+          "innerSections": [
+            "Data lineage"
+          ]
+        },
+        {
+          "name": "Row",
+          "file": "src/components/ui/DataLineagePopover.tsx",
+          "line": 90,
+          "innerSections": []
+        },
+        {
+          "name": "Sparkline",
+          "file": "src/components/ui/Sparkline.tsx",
+          "line": 16,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/sections/market/GlobalMarketsSection.tsx",
+        "src/components/ui/DataLineagePopover.tsx",
+        "src/components/ui/Sparkline.tsx"
+      ]
+    },
+    {
+      "workspace": "macro",
+      "group": "OVERVIEW",
+      "id": "global-correlation",
+      "entries": [
+        "GlobalCorrelationSection"
+      ],
+      "components": [
+        {
+          "name": "GlobalCorrelationSection",
+          "file": "src/components/sections/market/GlobalCorrelationSection.tsx",
+          "line": 16,
+          "innerSections": [
+            "Refresh"
+          ]
+        },
+        {
+          "name": "DataLineagePopover",
+          "file": "src/components/ui/DataLineagePopover.tsx",
+          "line": 31,
+          "innerSections": [
+            "Data lineage"
+          ]
+        },
+        {
+          "name": "Row",
+          "file": "src/components/ui/DataLineagePopover.tsx",
+          "line": 90,
+          "innerSections": []
+        },
+        {
+          "name": "CorrelationHeatmap",
+          "file": "src/components/ui/CorrelationHeatmap.tsx",
+          "line": 38,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/sections/market/GlobalCorrelationSection.tsx",
+        "src/components/ui/DataLineagePopover.tsx",
+        "src/components/ui/CorrelationHeatmap.tsx"
+      ]
+    },
+    {
+      "workspace": "macro",
+      "group": "OVERVIEW",
+      "id": "regional-macro",
+      "entries": [
+        "RegionalMacroSection"
+      ],
+      "components": [
+        {
+          "name": "RegionalMacroSection",
+          "file": "src/components/sections/macro/RegionalMacroSection.tsx",
+          "line": 66,
+          "innerSections": [
+            "Refresh",
+            "Real policy rate (policy − CPI): positive = restrictive",
+            "Inflation vs target (CPI − target): positive = above target",
+            "CPI minus the central bank",
+            "Policy rate minus CPI y/y",
+            "GDP vs assumed trend, CPI vs target",
+            "Policy rate minus the Fed",
+            "OECD monthly average",
+            "OECD monthly average (US latest daily close shown below the table)",
+            "Same-month 10Y spread to US Treasuries",
+            "10Y minus 3M, same month",
+            "Index return translated into USD",
+            "Local currency vs USD, 1 month",
+            "Local currency vs USD, year to date"
+          ]
+        },
+        {
+          "name": "NextDecisions",
+          "file": "src/components/sections/macro/RegionalMacroSection.tsx",
+          "line": 277,
+          "innerSections": []
+        },
+        {
+          "name": "BarList",
+          "file": "src/components/ui/BarList.tsx",
+          "line": 23,
+          "innerSections": []
+        },
+        {
+          "name": "RegionRows",
+          "file": "src/components/sections/macro/RegionalMacroSection.tsx",
+          "line": 218,
+          "innerSections": []
+        },
+        {
+          "name": "V",
+          "file": "src/components/sections/macro/RegionalMacroSection.tsx",
+          "line": 47,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/sections/macro/RegionalMacroSection.tsx",
+        "src/components/ui/BarList.tsx"
+      ]
+    },
+    {
+      "workspace": "macro",
+      "group": "SIGNALS",
+      "id": "ensemble",
+      "entries": [
+        "EnsembleSection"
+      ],
+      "components": [
+        {
+          "name": "EnsembleSection",
+          "file": "src/components/sections/signals/EnsembleSection.tsx",
+          "line": 12,
+          "innerSections": [
+            "Standard deviation of the component scores"
+          ]
+        }
+      ],
+      "files": [
+        "src/components/sections/signals/EnsembleSection.tsx"
+      ]
+    },
+    {
+      "workspace": "macro",
+      "group": "SIGNALS",
+      "id": "signal-stack",
+      "entries": [
+        "SignalStackSection"
+      ],
+      "components": [
+        {
+          "name": "SignalStackSection",
+          "file": "src/components/sections/signals/SignalStackSection.tsx",
+          "line": 10,
+          "innerSections": []
+        },
+        {
+          "name": "SkeletonSignalStack",
+          "file": "src/components/ui/Skeleton.tsx",
+          "line": 111,
+          "innerSections": []
+        },
+        {
+          "name": "Skeleton",
+          "file": "src/components/ui/Skeleton.tsx",
+          "line": 15,
+          "innerSections": []
+        },
+        {
+          "name": "ComputedTag",
+          "file": "src/components/ui/ComputedTag.tsx",
+          "line": 20,
+          "innerSections": []
+        },
+        {
+          "name": "SourceTag",
+          "file": "src/components/ui/SourceTag.tsx",
+          "line": 28,
+          "innerSections": []
+        },
+        {
+          "name": "AnimatedValue",
+          "file": "src/components/ui/AnimatedValue.tsx",
+          "line": 32,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/sections/signals/SignalStackSection.tsx",
+        "src/components/ui/Skeleton.tsx",
+        "src/components/ui/ComputedTag.tsx",
+        "src/components/ui/SourceTag.tsx",
+        "src/components/ui/AnimatedValue.tsx"
+      ]
+    },
+    {
+      "workspace": "macro",
+      "group": "SIGNALS",
+      "id": "signal-story",
+      "entries": [
+        "SignalStorySection"
+      ],
+      "components": [
+        {
+          "name": "SignalStorySection",
+          "file": "src/components/sections/signals/SignalStorySection.tsx",
+          "line": 19,
+          "innerSections": [
+            "Refresh"
+          ]
+        },
+        {
+          "name": "DataLineagePopover",
+          "file": "src/components/ui/DataLineagePopover.tsx",
+          "line": 31,
+          "innerSections": [
+            "Data lineage"
+          ]
+        },
+        {
+          "name": "Row",
+          "file": "src/components/ui/DataLineagePopover.tsx",
+          "line": 90,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/sections/signals/SignalStorySection.tsx",
+        "src/components/ui/DataLineagePopover.tsx"
+      ]
+    },
+    {
+      "workspace": "macro",
+      "group": "SIGNALS",
+      "id": "signals",
+      "entries": [
+        "SignalsSection"
+      ],
+      "components": [
+        {
+          "name": "SignalsSection",
+          "file": "src/components/sections/signals/SignalsSection.tsx",
+          "line": 13,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/sections/signals/SignalsSection.tsx"
+      ]
+    },
+    {
+      "workspace": "macro",
+      "group": "SIGNALS",
+      "id": "alt-data",
+      "entries": [
+        "AltDataSection"
+      ],
+      "components": [
+        {
+          "name": "AltDataSection",
+          "file": "src/components/sections/signals/AltDataSection.tsx",
+          "line": 12,
+          "innerSections": [
+            "Refresh"
+          ]
+        }
+      ],
+      "files": [
+        "src/components/sections/signals/AltDataSection.tsx"
+      ]
+    },
+    {
+      "workspace": "macro",
+      "group": "SIGNALS",
+      "id": "stream-agreement",
+      "entries": [
+        "StreamAgreementSection"
+      ],
+      "components": [
+        {
+          "name": "StreamAgreementSection",
+          "file": "src/components/sections/signals/StreamAgreementSection.tsx",
+          "line": 25,
+          "innerSections": [
+            "Refresh"
+          ]
+        },
+        {
+          "name": "DataLineagePopover",
+          "file": "src/components/ui/DataLineagePopover.tsx",
+          "line": 31,
+          "innerSections": [
+            "Data lineage"
+          ]
+        },
+        {
+          "name": "Row",
+          "file": "src/components/ui/DataLineagePopover.tsx",
+          "line": 90,
+          "innerSections": []
+        },
+        {
+          "name": "Dir",
+          "file": "src/components/sections/signals/StreamAgreementSection.tsx",
+          "line": 19,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/sections/signals/StreamAgreementSection.tsx",
+        "src/components/ui/DataLineagePopover.tsx"
+      ]
+    },
+    {
+      "workspace": "macro",
+      "group": "SIGNALS",
+      "id": "sector-allocation",
+      "entries": [
+        "SectorAllocationSection"
+      ],
+      "components": [
+        {
+          "name": "SectorAllocationSection",
+          "file": "src/components/sections/equity/SectorAllocationSection.tsx",
+          "line": 59,
+          "innerSections": [
+            "Sector scores, ranked (relative strength in this regime)",
+            "The regime playbook",
+            "The playbook stance unless relative strength clearly contradicts it (z beyond ±0.5)",
+            "feed unavailable",
+            "EPS-revision feed unavailable"
+          ]
+        },
+        {
+          "name": "BarList",
+          "file": "src/components/ui/BarList.tsx",
+          "line": 23,
+          "innerSections": []
+        },
+        {
+          "name": "KpiStrip",
+          "file": "src/components/ui/KpiStrip.tsx",
+          "line": 8,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/sections/equity/SectorAllocationSection.tsx",
+        "src/components/ui/BarList.tsx",
+        "src/components/ui/KpiStrip.tsx"
+      ]
+    },
+    {
+      "workspace": "macro",
+      "group": "SIGNALS",
+      "id": "factor-rotation",
+      "entries": [
+        "FactorRotationSection"
+      ],
+      "components": [
+        {
+          "name": "FactorRotationSection",
+          "file": "src/components/sections/equity/FactorRotationSection.tsx",
+          "line": 41,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/sections/equity/FactorRotationSection.tsx"
+      ]
+    },
+    {
+      "workspace": "macro",
+      "group": "SIGNALS",
+      "id": "cot-positioning",
+      "entries": [
+        "COTPositioningSection"
+      ],
+      "components": [
+        {
+          "name": "COTPositioningSection",
+          "file": "src/components/sections/risk/COTPositioningSection.tsx",
+          "line": 39,
+          "innerSections": [
+            "Speculators"
+          ]
+        },
+        {
+          "name": "BarList",
+          "file": "src/components/ui/BarList.tsx",
+          "line": 23,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/sections/risk/COTPositioningSection.tsx",
+        "src/components/ui/BarList.tsx"
+      ]
+    },
+    {
+      "workspace": "macro",
+      "group": "SIGNALS",
+      "id": "cta-trend",
+      "entries": [
+        "CTATrendSection"
+      ],
+      "components": [
+        {
+          "name": "CTATrendSection",
+          "file": "src/components/sections/signals/CTATrendSection.tsx",
+          "line": 15,
+          "innerSections": [
+            "Return by horizon (%, click an asset to chart it; amber = horizons disagree)"
+          ]
+        },
+        {
+          "name": "ComputedTag",
+          "file": "src/components/ui/ComputedTag.tsx",
+          "line": 20,
+          "innerSections": []
+        },
+        {
+          "name": "SourceTag",
+          "file": "src/components/ui/SourceTag.tsx",
+          "line": 28,
+          "innerSections": []
+        },
+        {
+          "name": "HeatGrid",
+          "file": "src/components/ui/HeatGrid.tsx",
+          "line": 22,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/sections/signals/CTATrendSection.tsx",
+        "src/components/ui/ComputedTag.tsx",
+        "src/components/ui/SourceTag.tsx",
+        "src/components/ui/HeatGrid.tsx"
+      ]
+    },
+    {
+      "workspace": "macro",
+      "group": "SIGNALS",
+      "id": "news-sentiment",
+      "entries": [
+        "NewsSentimentSection"
+      ],
+      "components": [
+        {
+          "name": "NewsSentimentSection",
+          "file": "src/components/sections/signals/NewsSentimentSection.tsx",
+          "line": 13,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/sections/signals/NewsSentimentSection.tsx"
+      ]
+    },
+    {
+      "workspace": "macro",
+      "group": "FORECASTS",
+      "id": "valuation",
+      "entries": [
+        "ValuationSection"
+      ],
+      "components": [
+        {
+          "name": "ValuationSection",
+          "file": "src/components/sections/equity/ValuationSection.tsx",
+          "line": 13,
+          "innerSections": []
+        },
+        {
+          "name": "ComputedTag",
+          "file": "src/components/ui/ComputedTag.tsx",
+          "line": 20,
+          "innerSections": []
+        },
+        {
+          "name": "SourceTag",
+          "file": "src/components/ui/SourceTag.tsx",
+          "line": 28,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/sections/equity/ValuationSection.tsx",
+        "src/components/ui/ComputedTag.tsx",
+        "src/components/ui/SourceTag.tsx"
+      ]
+    },
+    {
+      "workspace": "macro",
+      "group": "FORECASTS",
+      "id": "nowcast",
+      "entries": [
+        "NowcastSection"
+      ],
+      "components": [
+        {
+          "name": "NowcastSection",
+          "file": "src/components/sections/macro/NowcastSection.tsx",
+          "line": 28,
+          "innerSections": []
+        },
+        {
+          "name": "ComputedTag",
+          "file": "src/components/ui/ComputedTag.tsx",
+          "line": 20,
+          "innerSections": []
+        },
+        {
+          "name": "SourceTag",
+          "file": "src/components/ui/SourceTag.tsx",
+          "line": 28,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/sections/macro/NowcastSection.tsx",
+        "src/components/ui/ComputedTag.tsx",
+        "src/components/ui/SourceTag.tsx"
+      ]
+    },
+    {
+      "workspace": "macro",
+      "group": "FORECASTS",
+      "id": "yield-curve",
+      "entries": [
+        "YieldCurveSection"
+      ],
+      "components": [
+        {
+          "name": "YieldCurveSection",
+          "file": "src/components/sections/rates/YieldCurveSection.tsx",
+          "line": 157,
+          "innerSections": []
+        },
+        {
+          "name": "Card",
+          "file": "src/components/ui/Card.tsx",
+          "line": 15,
+          "innerSections": []
+        },
+        {
+          "name": "CurveChart",
+          "file": "src/components/sections/rates/YieldCurveSection.tsx",
+          "line": 63,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/sections/rates/YieldCurveSection.tsx",
+        "src/components/ui/Card.tsx"
+      ]
+    },
+    {
+      "workspace": "macro",
+      "group": "FORECASTS",
+      "id": "liquidity",
+      "entries": [
+        "LiquiditySection"
+      ],
+      "components": [
+        {
+          "name": "LiquiditySection",
+          "file": "src/components/sections/macro/LiquiditySection.tsx",
+          "line": 14,
+          "innerSections": [
+            "What drives the liquidity score (component weights)"
+          ]
+        },
+        {
+          "name": "ComputedTag",
+          "file": "src/components/ui/ComputedTag.tsx",
+          "line": 20,
+          "innerSections": []
+        },
+        {
+          "name": "SourceTag",
+          "file": "src/components/ui/SourceTag.tsx",
+          "line": 28,
+          "innerSections": []
+        },
+        {
+          "name": "Donut",
+          "file": "src/components/ui/Donut.tsx",
+          "line": 42,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/sections/macro/LiquiditySection.tsx",
+        "src/components/ui/ComputedTag.tsx",
+        "src/components/ui/SourceTag.tsx",
+        "src/components/ui/Donut.tsx"
+      ]
+    },
+    {
+      "workspace": "macro",
+      "group": "FORECASTS",
+      "id": "sentiment",
+      "entries": [
+        "SentimentSection"
+      ],
+      "components": [
+        {
+          "name": "SentimentSection",
+          "file": "src/components/sections/signals/SentimentSection.tsx",
+          "line": 12,
+          "innerSections": []
+        },
+        {
+          "name": "Card",
+          "file": "src/components/ui/Card.tsx",
+          "line": 15,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/sections/signals/SentimentSection.tsx",
+        "src/components/ui/Card.tsx"
+      ]
+    },
+    {
+      "workspace": "macro",
+      "group": "FORECASTS",
+      "id": "expected-returns",
+      "entries": [
+        "ExpectedReturnsSection"
+      ],
+      "components": [
+        {
+          "name": "ExpectedReturnsSection",
+          "file": "src/components/sections/equity/ExpectedReturnsSection.tsx",
+          "line": 13,
+          "innerSections": [
+            "Transitions counted out of the current quadrant",
+            "Expected return by asset class",
+            "Risk-adjusted (return per unit of volatility)"
+          ]
+        },
+        {
+          "name": "BarList",
+          "file": "src/components/ui/BarList.tsx",
+          "line": 23,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/sections/equity/ExpectedReturnsSection.tsx",
+        "src/components/ui/BarList.tsx"
+      ]
+    },
+    {
+      "workspace": "macro",
+      "group": "FORECASTS",
+      "id": "gmo-forecasts",
+      "entries": [
+        "GMOForecastsSection"
+      ],
+      "components": [
+        {
+          "name": "GMOForecastsSection",
+          "file": "src/components/sections/macro/GMOForecastsSection.tsx",
+          "line": 14,
+          "innerSections": []
+        },
+        {
+          "name": "CsvButton",
+          "file": "src/components/ui/CsvButton.tsx",
+          "line": 23,
+          "innerSections": [
+            "Export table to CSV"
+          ]
+        },
+        {
+          "name": "ComputedTag",
+          "file": "src/components/ui/ComputedTag.tsx",
+          "line": 20,
+          "innerSections": []
+        },
+        {
+          "name": "SourceTag",
+          "file": "src/components/ui/SourceTag.tsx",
+          "line": 28,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/sections/macro/GMOForecastsSection.tsx",
+        "src/components/ui/CsvButton.tsx",
+        "src/components/ui/ComputedTag.tsx",
+        "src/components/ui/SourceTag.tsx"
+      ]
+    },
+    {
+      "workspace": "macro",
+      "group": "FORECASTS",
+      "id": "regime-transition",
+      "entries": [
+        "RegimeTransitionSection"
+      ],
+      "components": [
+        {
+          "name": "RegimeTransitionSection",
+          "file": "src/components/sections/macro/RegimeTransitionSection.tsx",
+          "line": 12,
+          "innerSections": []
+        },
+        {
+          "name": "TransitionMatrixGrid",
+          "file": "src/components/sections/macro/RegimeTransitionSection.tsx",
+          "line": 160,
+          "innerSections": []
+        },
+        {
+          "name": "HeatGrid",
+          "file": "src/components/ui/HeatGrid.tsx",
+          "line": 22,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/sections/macro/RegimeTransitionSection.tsx",
+        "src/components/ui/HeatGrid.tsx"
+      ]
+    },
+    {
+      "workspace": "macro",
+      "group": "FORECASTS",
+      "id": "regime-outlook",
+      "entries": [
+        "RegimeOutlookSection"
+      ],
+      "components": [
+        {
+          "name": "RegimeOutlookSection",
+          "file": "src/components/sections/macro/RegimeOutlookSection.tsx",
+          "line": 14,
+          "innerSections": [
+            "Refresh"
+          ]
+        },
+        {
+          "name": "DataLineagePopover",
+          "file": "src/components/ui/DataLineagePopover.tsx",
+          "line": 31,
+          "innerSections": [
+            "Data lineage"
+          ]
+        },
+        {
+          "name": "Row",
+          "file": "src/components/ui/DataLineagePopover.tsx",
+          "line": 90,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/sections/macro/RegimeOutlookSection.tsx",
+        "src/components/ui/DataLineagePopover.tsx"
+      ]
+    },
+    {
+      "workspace": "macro",
+      "group": "FORECASTS",
+      "id": "quadrants",
+      "entries": [
+        "QuadrantsSection"
+      ],
+      "components": [
+        {
+          "name": "QuadrantsSection",
+          "file": "src/components/sections/macro/QuadrantsSection.tsx",
+          "line": 14,
+          "innerSections": [
+            "Refresh"
+          ]
+        },
+        {
+          "name": "DataLineagePopover",
+          "file": "src/components/ui/DataLineagePopover.tsx",
+          "line": 31,
+          "innerSections": [
+            "Data lineage"
+          ]
+        },
+        {
+          "name": "Row",
+          "file": "src/components/ui/DataLineagePopover.tsx",
+          "line": 90,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/sections/macro/QuadrantsSection.tsx",
+        "src/components/ui/DataLineagePopover.tsx"
+      ]
+    },
+    {
+      "workspace": "macro",
+      "group": "FORECASTS",
+      "id": "event-vol",
+      "entries": [
+        "EventVolSection"
+      ],
+      "components": [
+        {
+          "name": "EventVolSection",
+          "file": "src/components/sections/market/EventVolSection.tsx",
+          "line": 15,
+          "innerSections": [
+            "Refresh"
+          ]
+        },
+        {
+          "name": "DataLineagePopover",
+          "file": "src/components/ui/DataLineagePopover.tsx",
+          "line": 31,
+          "innerSections": [
+            "Data lineage"
+          ]
+        },
+        {
+          "name": "Row",
+          "file": "src/components/ui/DataLineagePopover.tsx",
+          "line": 90,
+          "innerSections": []
+        },
+        {
+          "name": "BarList",
+          "file": "src/components/ui/BarList.tsx",
+          "line": 23,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/sections/market/EventVolSection.tsx",
+        "src/components/ui/DataLineagePopover.tsx",
+        "src/components/ui/BarList.tsx"
+      ]
+    },
+    {
+      "workspace": "macro",
+      "group": "CYCLE & CROSS-ASSET",
+      "id": "cycle-risk",
+      "entries": [
+        "CycleRiskSection"
+      ],
+      "components": [
+        {
+          "name": "CycleRiskSection",
+          "file": "src/components/sections/risk/CycleRiskSection.tsx",
+          "line": 60,
+          "innerSections": [
+            "Refresh",
+            "Near-term forward spread",
+            "Excess bond premium",
+            "Financial turbulence",
+            "Absorption ratio",
+            "25% target",
+            "Scrollable data table"
+          ]
+        },
+        {
+          "name": "Card",
+          "file": "src/components/sections/risk/CycleRiskSection.tsx",
+          "line": 49,
+          "innerSections": []
+        },
+        {
+          "name": "Sparkline",
+          "file": "src/components/sections/risk/CycleRiskSection.tsx",
+          "line": 18,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/sections/risk/CycleRiskSection.tsx"
+      ]
+    },
+    {
+      "workspace": "macro",
+      "group": "CYCLE & CROSS-ASSET",
+      "id": "risk-indicators",
+      "entries": [
+        "RiskIndicatorsSection"
+      ],
+      "components": [
+        {
+          "name": "RiskIndicatorsSection",
+          "file": "src/components/sections/risk/RiskIndicatorsSection.tsx",
+          "line": 17,
+          "innerSections": []
+        },
+        {
+          "name": "SkeletonCard",
+          "file": "src/components/ui/Skeleton.tsx",
+          "line": 131,
+          "innerSections": []
+        },
+        {
+          "name": "SkeletonText",
+          "file": "src/components/ui/Skeleton.tsx",
+          "line": 25,
+          "innerSections": []
+        },
+        {
+          "name": "Skeleton",
+          "file": "src/components/ui/Skeleton.tsx",
+          "line": 15,
+          "innerSections": []
+        },
+        {
+          "name": "ComputedTag",
+          "file": "src/components/ui/ComputedTag.tsx",
+          "line": 20,
+          "innerSections": []
+        },
+        {
+          "name": "SourceTag",
+          "file": "src/components/ui/SourceTag.tsx",
+          "line": 28,
+          "innerSections": []
+        },
+        {
+          "name": "AnimatedValue",
+          "file": "src/components/ui/AnimatedValue.tsx",
+          "line": 32,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/sections/risk/RiskIndicatorsSection.tsx",
+        "src/components/ui/Skeleton.tsx",
+        "src/components/ui/ComputedTag.tsx",
+        "src/components/ui/SourceTag.tsx",
+        "src/components/ui/AnimatedValue.tsx"
+      ]
+    },
+    {
+      "workspace": "macro",
+      "group": "CYCLE & CROSS-ASSET",
+      "id": "debt-cycle",
+      "entries": [
+        "DebtCycleSection",
+        "DebtCyclesPanel"
+      ],
+      "components": [
+        {
+          "name": "DebtCycleSection",
+          "file": "src/components/sections/macro/DebtCycleSection.tsx",
+          "line": 14,
+          "innerSections": []
+        },
+        {
+          "name": "ComputedTag",
+          "file": "src/components/ui/ComputedTag.tsx",
+          "line": 20,
+          "innerSections": []
+        },
+        {
+          "name": "SourceTag",
+          "file": "src/components/ui/SourceTag.tsx",
+          "line": 28,
+          "innerSections": []
+        },
+        {
+          "name": "DebtCyclesPanel",
+          "file": "src/components/markets/BridgewaterViews.tsx",
+          "line": 121,
+          "innerSections": [
+            "Private credit/GDP vs its long-run trend; above +10 has preceded most banking crises",
+            "Total debt (private + government), % of GDP"
+          ]
+        },
+        {
+          "name": "Frame",
+          "file": "src/components/markets/BridgewaterViews.tsx",
+          "line": 23,
+          "innerSections": []
+        },
+        {
+          "name": "Loading",
+          "file": "src/components/markets/shared.tsx",
+          "line": 197,
+          "innerSections": []
+        },
+        {
+          "name": "ErrorBox",
+          "file": "src/components/markets/shared.tsx",
+          "line": 208,
+          "innerSections": []
+        },
+        {
+          "name": "Panel",
+          "file": "src/components/markets/shared.tsx",
+          "line": 181,
+          "innerSections": []
+        },
+        {
+          "name": "Tile",
+          "file": "src/components/markets/BridgewaterViews.tsx",
+          "line": 14,
+          "innerSections": []
+        },
+        {
+          "name": "LineChart",
+          "file": "src/components/ui/LineChart.tsx",
+          "line": 88,
+          "innerSections": [
+            "Period",
+            "Interval",
+            "Custom range",
+            "From",
+            "To"
+          ]
+        },
+        {
+          "name": "LineChartCore",
+          "file": "src/components/ui/LineChart.tsx",
+          "line": 182,
+          "innerSections": []
+        },
+        {
+          "name": "Ref",
+          "file": "src/components/markets/BridgewaterViews.tsx",
+          "line": 29,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/sections/macro/DebtCycleSection.tsx",
+        "src/components/ui/ComputedTag.tsx",
+        "src/components/ui/SourceTag.tsx",
+        "src/components/markets/BridgewaterViews.tsx",
+        "src/components/markets/shared.tsx",
+        "src/components/ui/LineChart.tsx"
+      ]
+    },
+    {
+      "workspace": "macro",
+      "group": "CYCLE & CROSS-ASSET",
+      "id": "correlation",
+      "entries": [
+        "CorrelationRegimeSection"
+      ],
+      "components": [
+        {
+          "name": "CorrelationRegimeSection",
+          "file": "src/components/sections/risk/CorrelationRegimeSection.tsx",
+          "line": 9,
+          "innerSections": [
+            "60-day correlation by pair, ranked"
+          ]
+        },
+        {
+          "name": "ComputedTag",
+          "file": "src/components/ui/ComputedTag.tsx",
+          "line": 20,
+          "innerSections": []
+        },
+        {
+          "name": "SourceTag",
+          "file": "src/components/ui/SourceTag.tsx",
+          "line": 28,
+          "innerSections": []
+        },
+        {
+          "name": "BarList",
+          "file": "src/components/ui/BarList.tsx",
+          "line": 23,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/sections/risk/CorrelationRegimeSection.tsx",
+        "src/components/ui/ComputedTag.tsx",
+        "src/components/ui/SourceTag.tsx",
+        "src/components/ui/BarList.tsx"
+      ]
+    },
+    {
+      "workspace": "macro",
+      "group": "CYCLE & CROSS-ASSET",
+      "id": "correlation-matrix",
+      "entries": [
+        "CorrelationMatrixSection"
+      ],
+      "components": [
+        {
+          "name": "CorrelationMatrixSection",
+          "file": "src/components/sections/risk/CorrelationMatrixSection.tsx",
+          "line": 16,
+          "innerSections": [
+            "Refresh"
+          ]
+        },
+        {
+          "name": "DataLineagePopover",
+          "file": "src/components/ui/DataLineagePopover.tsx",
+          "line": 31,
+          "innerSections": [
+            "Data lineage"
+          ]
+        },
+        {
+          "name": "Row",
+          "file": "src/components/ui/DataLineagePopover.tsx",
+          "line": 90,
+          "innerSections": []
+        },
+        {
+          "name": "CorrelationHeatmap",
+          "file": "src/components/ui/CorrelationHeatmap.tsx",
+          "line": 38,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/sections/risk/CorrelationMatrixSection.tsx",
+        "src/components/ui/DataLineagePopover.tsx",
+        "src/components/ui/CorrelationHeatmap.tsx"
+      ]
+    },
+    {
+      "workspace": "macro",
+      "group": "CYCLE & CROSS-ASSET",
+      "id": "advanced",
+      "entries": [
+        "AdvancedIndicatorsSection"
+      ],
+      "components": [
+        {
+          "name": "AdvancedIndicatorsSection",
+          "file": "src/components/sections/macro/AdvancedIndicatorsSection.tsx",
+          "line": 13,
+          "innerSections": []
+        },
+        {
+          "name": "ComputedTag",
+          "file": "src/components/ui/ComputedTag.tsx",
+          "line": 20,
+          "innerSections": []
+        },
+        {
+          "name": "SourceTag",
+          "file": "src/components/ui/SourceTag.tsx",
+          "line": 28,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/sections/macro/AdvancedIndicatorsSection.tsx",
+        "src/components/ui/ComputedTag.tsx",
+        "src/components/ui/SourceTag.tsx"
+      ]
+    },
+    {
+      "workspace": "macro",
+      "group": "CYCLE & CROSS-ASSET",
+      "id": "fx-monitor",
+      "entries": [
+        "FXMonitorSection"
+      ],
+      "components": [
+        {
+          "name": "FXMonitorSection",
+          "file": "src/components/sections/rates/FXMonitorSection.tsx",
+          "line": 42,
+          "innerSections": [
+            "FX MONITOR",
+            "1-month trend: UP / DOWN beyond ±1%"
+          ]
+        },
+        {
+          "name": "Card",
+          "file": "src/components/ui/Card.tsx",
+          "line": 15,
+          "innerSections": []
+        },
+        {
+          "name": "CsvButton",
+          "file": "src/components/ui/CsvButton.tsx",
+          "line": 23,
+          "innerSections": [
+            "Export table to CSV"
+          ]
+        },
+        {
+          "name": "SourceTag",
+          "file": "src/components/ui/SourceTag.tsx",
+          "line": 28,
+          "innerSections": []
+        },
+        {
+          "name": "Table",
+          "file": "src/components/ui/Table.tsx",
+          "line": 20,
+          "innerSections": [
+            "Scrollable data table"
+          ]
+        }
+      ],
+      "files": [
+        "src/components/sections/rates/FXMonitorSection.tsx",
+        "src/components/ui/Card.tsx",
+        "src/components/ui/CsvButton.tsx",
+        "src/components/ui/SourceTag.tsx",
+        "src/components/ui/Table.tsx"
+      ]
+    },
+    {
+      "workspace": "macro",
+      "group": "CYCLE & CROSS-ASSET",
+      "id": "commodities-dashboard",
+      "entries": [
+        "CommoditiesDashboardSection"
+      ],
+      "components": [
+        {
+          "name": "CommoditiesDashboardSection",
+          "file": "src/components/sections/rates/CommoditiesDashboardSection.tsx",
+          "line": 57,
+          "innerSections": [
+            "COMMODITIES DASHBOARD"
+          ]
+        },
+        {
+          "name": "Card",
+          "file": "src/components/ui/Card.tsx",
+          "line": 15,
+          "innerSections": []
+        },
+        {
+          "name": "LoadingState",
+          "file": "src/components/ui/LoadingState.tsx",
+          "line": 11,
+          "innerSections": []
+        },
+        {
+          "name": "ErrorState",
+          "file": "src/components/ui/ErrorState.tsx",
+          "line": 35,
+          "innerSections": []
+        },
+        {
+          "name": "CsvButton",
+          "file": "src/components/ui/CsvButton.tsx",
+          "line": 23,
+          "innerSections": [
+            "Export table to CSV"
+          ]
+        },
+        {
+          "name": "SourceTag",
+          "file": "src/components/ui/SourceTag.tsx",
+          "line": 28,
+          "innerSections": []
+        },
+        {
+          "name": "Badge",
+          "file": "src/components/ui/Badge.tsx",
+          "line": 20,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/sections/rates/CommoditiesDashboardSection.tsx",
+        "src/components/ui/Card.tsx",
+        "src/components/ui/LoadingState.tsx",
+        "src/components/ui/ErrorState.tsx",
+        "src/components/ui/CsvButton.tsx",
+        "src/components/ui/SourceTag.tsx",
+        "src/components/ui/Badge.tsx"
+      ]
+    },
+    {
+      "workspace": "macro",
+      "group": "CYCLE & CROSS-ASSET",
+      "id": "fixed-income-dashboard",
+      "entries": [
+        "FixedIncomeDashboardSection"
+      ],
+      "components": [
+        {
+          "name": "FixedIncomeDashboardSection",
+          "file": "src/components/sections/rates/FixedIncomeDashboardSection.tsx",
+          "line": 40,
+          "innerSections": [
+            "FIXED INCOME DASHBOARD"
+          ]
+        },
+        {
+          "name": "Badge",
+          "file": "src/components/ui/Badge.tsx",
+          "line": 20,
+          "innerSections": []
+        },
+        {
+          "name": "Card",
+          "file": "src/components/ui/Card.tsx",
+          "line": 15,
+          "innerSections": []
+        },
+        {
+          "name": "SourceTag",
+          "file": "src/components/ui/SourceTag.tsx",
+          "line": 28,
+          "innerSections": []
+        },
+        {
+          "name": "Table",
+          "file": "src/components/ui/Table.tsx",
+          "line": 20,
+          "innerSections": [
+            "Scrollable data table"
+          ]
+        }
+      ],
+      "files": [
+        "src/components/sections/rates/FixedIncomeDashboardSection.tsx",
+        "src/components/ui/Badge.tsx",
+        "src/components/ui/Card.tsx",
+        "src/components/ui/SourceTag.tsx",
+        "src/components/ui/Table.tsx"
+      ]
+    },
+    {
+      "workspace": "macro",
+      "group": "CYCLE & CROSS-ASSET",
+      "id": "international",
+      "entries": [
+        "InternationalMacroSection"
+      ],
+      "components": [
+        {
+          "name": "InternationalMacroSection",
+          "file": "src/components/sections/macro/InternationalMacroSection.tsx",
+          "line": 13,
+          "innerSections": []
+        },
+        {
+          "name": "ComputedTag",
+          "file": "src/components/ui/ComputedTag.tsx",
+          "line": 20,
+          "innerSections": []
+        },
+        {
+          "name": "SourceTag",
+          "file": "src/components/ui/SourceTag.tsx",
+          "line": 28,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/sections/macro/InternationalMacroSection.tsx",
+        "src/components/ui/ComputedTag.tsx",
+        "src/components/ui/SourceTag.tsx"
+      ]
+    },
+    {
+      "workspace": "macro",
+      "group": "CYCLE & CROSS-ASSET",
+      "id": "reflexivity",
+      "entries": [
+        "ReflexivitySection"
+      ],
+      "components": [
+        {
+          "name": "ReflexivitySection",
+          "file": "src/components/sections/signals/ReflexivitySection.tsx",
+          "line": 12,
+          "innerSections": []
+        },
+        {
+          "name": "LoopCard",
+          "file": "src/components/sections/signals/ReflexivitySection.tsx",
+          "line": 24,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/sections/signals/ReflexivitySection.tsx"
+      ]
+    },
+    {
+      "workspace": "macro",
+      "group": "CYCLE & CROSS-ASSET",
+      "id": "transmission",
+      "entries": [
+        "TransmissionSection"
+      ],
+      "components": [
+        {
+          "name": "TransmissionSection",
+          "file": "src/components/sections/macro/TransmissionSection.tsx",
+          "line": 12,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/sections/macro/TransmissionSection.tsx"
+      ]
+    },
+    {
+      "workspace": "trading",
+      "group": "DECIDE",
+      "id": "trade-ideas",
+      "entries": [
+        "TradeIdeasSection"
+      ],
+      "components": [
+        {
+          "name": "TradeIdeasSection",
+          "file": "src/components/sections/equity/TradeIdeasSection.tsx",
+          "line": 14,
+          "innerSections": []
+        },
+        {
+          "name": "Badge",
+          "file": "src/components/ui/Badge.tsx",
+          "line": 20,
+          "innerSections": []
+        },
+        {
+          "name": "Card",
+          "file": "src/components/ui/Card.tsx",
+          "line": 15,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/sections/equity/TradeIdeasSection.tsx",
+        "src/components/ui/Badge.tsx",
+        "src/components/ui/Card.tsx"
+      ]
+    },
+    {
+      "workspace": "trading",
+      "group": "DECIDE",
+      "id": "trade-recommendations",
+      "entries": [
+        "TradeRecommendationsSection"
+      ],
+      "components": [
+        {
+          "name": "TradeRecommendationsSection",
+          "file": "src/components/sections/equity/TradeRecommendationsSection.tsx",
+          "line": 195,
+          "innerSections": [
+            "Confidence of the regime classification"
+          ]
+        },
+        {
+          "name": "Card",
+          "file": "src/components/ui/Card.tsx",
+          "line": 15,
+          "innerSections": []
+        },
+        {
+          "name": "Badge",
+          "file": "src/components/ui/Badge.tsx",
+          "line": 20,
+          "innerSections": []
+        },
+        {
+          "name": "CardContent",
+          "file": "src/components/ui/Card.tsx",
+          "line": 63,
+          "innerSections": []
+        },
+        {
+          "name": "CardHeader",
+          "file": "src/components/ui/Card.tsx",
+          "line": 47,
+          "innerSections": []
+        },
+        {
+          "name": "CardTitle",
+          "file": "src/components/ui/Card.tsx",
+          "line": 55,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/sections/equity/TradeRecommendationsSection.tsx",
+        "src/components/ui/Card.tsx",
+        "src/components/ui/Badge.tsx"
+      ]
+    },
+    {
+      "workspace": "trading",
+      "group": "DECIDE",
+      "id": "stock-ideas",
+      "entries": [
+        "StockIdeasSection"
+      ],
+      "components": [
+        {
+          "name": "StockIdeasSection",
+          "file": "src/components/sections/equity/StockIdeasSection.tsx",
+          "line": 36,
+          "innerSections": [
+            "Re-screen the global universe now",
+            "Market class",
+            "Scrollable data table",
+            "On your watchlist",
+            "Reward:risk · size in USD (% of NAV)"
+          ]
+        },
+        {
+          "name": "Select",
+          "file": "src/components/sections/equity/StockIdeasSection.tsx",
+          "line": 77,
+          "innerSections": []
+        },
+        {
+          "name": "MarketTag",
+          "file": "src/components/sections/equity/StockIdeasSection.tsx",
+          "line": 27,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/sections/equity/StockIdeasSection.tsx"
+      ]
+    },
+    {
+      "workspace": "trading",
+      "group": "DECIDE",
+      "id": "stock-timing",
+      "entries": [
+        "StockTimingSection"
+      ],
+      "components": [
+        {
+          "name": "StockTimingSection",
+          "file": "src/components/sections/equity/StockTimingSection.tsx",
+          "line": 52,
+          "innerSections": [
+            "Ticker or company name",
+            "Toggle watchlist",
+            "An objective for reward:risk — reaching it tightens the stop rather than selling (see Position Manager: the fixed-target exit was the weakest rule tested)",
+            "1 = strong buy … 5 = sell",
+            "Low / mean / high price target",
+            "Scrollable data table"
+          ]
+        },
+        {
+          "name": "Meter",
+          "file": "src/components/sections/equity/StockTimingSection.tsx",
+          "line": 31,
+          "innerSections": []
+        },
+        {
+          "name": "PriceChart",
+          "file": "src/components/ui/PriceChart.tsx",
+          "line": 100,
+          "innerSections": [
+            "Bar interval",
+            "Period",
+            "Custom date range",
+            "From",
+            "To",
+            "Chart type",
+            "Overlays",
+            "Logarithmic price scale"
+          ]
+        },
+        {
+          "name": "Btn",
+          "file": "src/components/ui/PriceChart.tsx",
+          "line": 239,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/sections/equity/StockTimingSection.tsx",
+        "src/components/ui/PriceChart.tsx"
+      ]
+    },
+    {
+      "workspace": "trading",
+      "group": "DECIDE",
+      "id": "pretrade-desk",
+      "entries": [
+        "PreTradeDeskSection"
+      ],
+      "components": [
+        {
+          "name": "PreTradeDeskSection",
+          "file": "src/components/sections/equity/PreTradeDeskSection.tsx",
+          "line": 37,
+          "innerSections": [
+            "Price & size",
+            "Liquidity (observed)",
+            "Estimated costs (one way)",
+            "Mandate"
+          ]
+        },
+        {
+          "name": "Card",
+          "file": "src/components/sections/equity/PreTradeDeskSection.tsx",
+          "line": 19,
+          "innerSections": []
+        },
+        {
+          "name": "Row",
+          "file": "src/components/sections/equity/PreTradeDeskSection.tsx",
+          "line": 28,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/sections/equity/PreTradeDeskSection.tsx"
+      ]
+    },
+    {
+      "workspace": "trading",
+      "group": "DECIDE",
+      "id": "pitch-review",
+      "entries": [
+        "PitchReviewSection"
+      ],
+      "components": [
+        {
+          "name": "PitchReviewSection",
+          "file": "src/components/sections/equity/PitchReviewSection.tsx",
+          "line": 26,
+          "innerSections": [
+            "Scrollable data table"
+          ]
+        }
+      ],
+      "files": [
+        "src/components/sections/equity/PitchReviewSection.tsx"
+      ]
+    },
+    {
+      "workspace": "trading",
+      "group": "DECIDE",
+      "id": "trade-workflow",
+      "entries": [
+        "TradeWorkflowSection"
+      ],
+      "components": [
+        {
+          "name": "TradeWorkflowSection",
+          "file": "src/components/sections/equity/TradeWorkflowSection.tsx",
+          "line": 20,
+          "innerSections": [
+            "Add to trade-idea board",
+            "Scrollable data table"
+          ]
+        }
+      ],
+      "files": [
+        "src/components/sections/equity/TradeWorkflowSection.tsx"
+      ]
+    },
+    {
+      "workspace": "trading",
+      "group": "DECIDE",
+      "id": "trade-lifecycle",
+      "entries": [
+        "TradeLifecycleSection"
+      ],
+      "components": [
+        {
+          "name": "TradeLifecycleSection",
+          "file": "src/components/sections/equity/TradeLifecycleSection.tsx",
+          "line": 160,
+          "innerSections": []
+        },
+        {
+          "name": "Lifecycle",
+          "file": "src/components/sections/equity/TradeLifecycleSection.tsx",
+          "line": 20,
+          "innerSections": [
+            "Scrollable data table"
+          ]
+        },
+        {
+          "name": "CorporateActions",
+          "file": "src/components/sections/equity/TradeLifecycleSection.tsx",
+          "line": 91,
+          "innerSections": [
+            "Scrollable data table"
+          ]
+        },
+        {
+          "name": "NavRecord",
+          "file": "src/components/sections/equity/TradeLifecycleSection.tsx",
+          "line": 140,
+          "innerSections": [
+            "Scrollable data table"
+          ]
+        }
+      ],
+      "files": [
+        "src/components/sections/equity/TradeLifecycleSection.tsx"
+      ]
+    },
+    {
+      "workspace": "trading",
+      "group": "DECIDE",
+      "id": "scenario-analysis",
+      "entries": [
+        "ScenarioAnalysisSection"
+      ],
+      "components": [
+        {
+          "name": "ScenarioAnalysisSection",
+          "file": "src/components/sections/risk/ScenarioAnalysisSection.tsx",
+          "line": 34,
+          "innerSections": [
+            "Expected return and 95% interval by scenario",
+            "Scenario probabilities",
+            "Transitions counted: months that moved here out of all months in the current quadrant (FRED since 1985)"
+          ]
+        },
+        {
+          "name": "Badge",
+          "file": "src/components/ui/Badge.tsx",
+          "line": 20,
+          "innerSections": []
+        },
+        {
+          "name": "RangePlot",
+          "file": "src/components/ui/RangePlot.tsx",
+          "line": 9,
+          "innerSections": []
+        },
+        {
+          "name": "Donut",
+          "file": "src/components/ui/Donut.tsx",
+          "line": 42,
+          "innerSections": []
+        },
+        {
+          "name": "Card",
+          "file": "src/components/ui/Card.tsx",
+          "line": 15,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/sections/risk/ScenarioAnalysisSection.tsx",
+        "src/components/ui/Badge.tsx",
+        "src/components/ui/RangePlot.tsx",
+        "src/components/ui/Donut.tsx",
+        "src/components/ui/Card.tsx"
+      ]
+    },
+    {
+      "workspace": "trading",
+      "group": "DECIDE",
+      "id": "momentum-veto",
+      "entries": [
+        "MomentumVetoSection"
+      ],
+      "components": [
+        {
+          "name": "MomentumVetoSection",
+          "file": "src/components/sections/signals/MomentumVetoSection.tsx",
+          "line": 9,
+          "innerSections": [
+            "12-1 month momentum, ranked (negative = veto pressure)"
+          ]
+        },
+        {
+          "name": "BarList",
+          "file": "src/components/ui/BarList.tsx",
+          "line": 23,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/sections/signals/MomentumVetoSection.tsx",
+        "src/components/ui/BarList.tsx"
+      ]
+    },
+    {
+      "workspace": "trading",
+      "group": "PORTFOLIO",
+      "id": "portfolio-positions",
+      "entries": [
+        "PositionsSection"
+      ],
+      "components": [
+        {
+          "name": "PositionsSection",
+          "file": "src/components/sections/equity/PositionsSection.tsx",
+          "line": 51,
+          "innerSections": [
+            "Refresh",
+            "Gross exposure by book",
+            "By asset class",
+            "Unrealized P&L by position",
+            "Upload CSV (symbol,quantity,avg_cost,book)",
+            "Share of gross exposure",
+            "Remove position record"
+          ]
+        },
+        {
+          "name": "KpiStrip",
+          "file": "src/components/ui/KpiStrip.tsx",
+          "line": 8,
+          "innerSections": []
+        },
+        {
+          "name": "Donut",
+          "file": "src/components/ui/Donut.tsx",
+          "line": 42,
+          "innerSections": []
+        },
+        {
+          "name": "BarList",
+          "file": "src/components/ui/BarList.tsx",
+          "line": 23,
+          "innerSections": []
+        },
+        {
+          "name": "Th",
+          "file": "src/components/sections/equity/PositionsSection.tsx",
+          "line": 152,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/sections/equity/PositionsSection.tsx",
+        "src/components/ui/KpiStrip.tsx",
+        "src/components/ui/Donut.tsx",
+        "src/components/ui/BarList.tsx"
+      ]
+    },
+    {
+      "workspace": "trading",
+      "group": "PORTFOLIO",
+      "id": "portfolios",
+      "entries": [
+        "PortfoliosSection"
+      ],
+      "components": [
+        {
+          "name": "PortfoliosSection",
+          "file": "src/components/sections/equity/PortfoliosSection.tsx",
+          "line": 667,
+          "innerSections": [
+            "Portfolio"
+          ]
+        },
+        {
+          "name": "MyPortfolio",
+          "file": "src/components/sections/equity/PortfoliosSection.tsx",
+          "line": 53,
+          "innerSections": [
+            "Exposure by holding (gross)",
+            "By country",
+            "Model view, by exposure",
+            "2.5 × ATR(14) below the last price (above it for a short)"
+          ]
+        },
+        {
+          "name": "Tile",
+          "file": "src/components/sections/equity/PortfoliosSection.tsx",
+          "line": 42,
+          "innerSections": []
+        },
+        {
+          "name": "Donut",
+          "file": "src/components/ui/Donut.tsx",
+          "line": 42,
+          "innerSections": []
+        },
+        {
+          "name": "MacroQuantTrader",
+          "file": "src/components/sections/equity/QuantTrader.tsx",
+          "line": 23,
+          "innerSections": []
+        },
+        {
+          "name": "Pills",
+          "file": "src/components/sections/model/quant/shared.tsx",
+          "line": 78,
+          "innerSections": []
+        },
+        {
+          "name": "Algos",
+          "file": "src/components/sections/equity/QuantTrader.tsx",
+          "line": 73,
+          "innerSections": [
+            "Refresh",
+            "Book exposure by sector (longs)"
+          ]
+        },
+        {
+          "name": "ErrorNote",
+          "file": "src/components/sections/model/quant/shared.tsx",
+          "line": 93,
+          "innerSections": []
+        },
+        {
+          "name": "KpiStrip",
+          "file": "src/components/ui/KpiStrip.tsx",
+          "line": 8,
+          "innerSections": []
+        },
+        {
+          "name": "LivePerformance",
+          "file": "src/components/sections/equity/LivePerformance.tsx",
+          "line": 15,
+          "innerSections": []
+        },
+        {
+          "name": "LineChart",
+          "file": "src/components/ui/LineChart.tsx",
+          "line": 88,
+          "innerSections": [
+            "Period",
+            "Interval",
+            "Custom range",
+            "From",
+            "To"
+          ]
+        },
+        {
+          "name": "LineChartCore",
+          "file": "src/components/ui/LineChart.tsx",
+          "line": 182,
+          "innerSections": []
+        },
+        {
+          "name": "AlgoCard",
+          "file": "src/components/sections/equity/QuantTrader.tsx",
+          "line": 180,
+          "innerSections": [
+            "Each final session is recorded once and never recomputed; the latest stays provisional until the next close",
+            "Deep analysis"
+          ]
+        },
+        {
+          "name": "DeepAnalysis",
+          "file": "src/components/sections/model/quant/DeepReport.tsx",
+          "line": 29,
+          "innerSections": []
+        },
+        {
+          "name": "DeepReport",
+          "file": "src/components/sections/model/quant/DeepReport.tsx",
+          "line": 54,
+          "innerSections": [
+            "Root-mean-square drawdown — punishes long, deep drawdowns",
+            "Growth of 1 (log) and underwater curve",
+            "Rolling 12 months",
+            "All statistics",
+            "Scrollable data table",
+            "Distribution of monthly returns",
+            "Monthly returns",
+            "Crises",
+            "Monte Carlo — annualised return over the next 1, 3 and 5 years (block bootstrap)",
+            "Out-of-sample check — first half vs second half",
+            "Year by year",
+            "By year of entry"
+          ]
+        },
+        {
+          "name": "Tile",
+          "file": "src/components/sections/model/quant/DeepReport.tsx",
+          "line": 13,
+          "innerSections": []
+        },
+        {
+          "name": "Box",
+          "file": "src/components/sections/model/quant/DeepReport.tsx",
+          "line": 22,
+          "innerSections": []
+        },
+        {
+          "name": "MacroTrader",
+          "file": "src/components/sections/equity/MacroTrader.tsx",
+          "line": 17,
+          "innerSections": []
+        },
+        {
+          "name": "Live",
+          "file": "src/components/sections/equity/MacroTrader.tsx",
+          "line": 31,
+          "innerSections": [
+            "Refresh",
+            "Target allocation"
+          ]
+        },
+        {
+          "name": "Settings",
+          "file": "src/components/sections/equity/MacroTrader.tsx",
+          "line": 135,
+          "innerSections": []
+        },
+        {
+          "name": "Field",
+          "file": "src/components/sections/model/quant/shared.tsx",
+          "line": 67,
+          "innerSections": []
+        },
+        {
+          "name": "Backtest",
+          "file": "src/components/sections/equity/MacroTrader.tsx",
+          "line": 162,
+          "innerSections": [
+            "Scrollable data table"
+          ]
+        },
+        {
+          "name": "FundamentalQuantTrader",
+          "file": "src/components/sections/equity/QuantTrader.tsx",
+          "line": 40,
+          "innerSections": []
+        },
+        {
+          "name": "TechnicalQuantTrader",
+          "file": "src/components/sections/equity/QuantTrader.tsx",
+          "line": 55,
+          "innerSections": []
+        },
+        {
+          "name": "AutoLive",
+          "file": "src/components/sections/equity/PortfoliosSection.tsx",
+          "line": 168,
+          "innerSections": [
+            "Allocation",
+            "By sector",
+            "By country",
+            "Close at the latest close"
+          ]
+        },
+        {
+          "name": "AutoBacktest",
+          "file": "src/components/sections/equity/PortfoliosSection.tsx",
+          "line": 378,
+          "innerSections": [
+            "How live-rule trades exit",
+            "Calendar-year returns"
+          ]
+        },
+        {
+          "name": "AutoDeep",
+          "file": "src/components/sections/equity/PortfoliosSection.tsx",
+          "line": 366,
+          "innerSections": [
+            "Deep analysis of the auto book vs its random-stock control"
+          ]
+        },
+        {
+          "name": "Optimiser",
+          "file": "src/components/sections/equity/PortfoliosSection.tsx",
+          "line": 516,
+          "innerSections": [
+            "Optimise which holdings",
+            "Tickers",
+            "Ex-ante annual volatility",
+            "Weighted average volatility / portfolio volatility",
+            "1 / Σw²",
+            "Current weights",
+            "Entry-model set-up score (Black-Litterman view)"
+          ]
+        }
+      ],
+      "files": [
+        "src/components/sections/equity/PortfoliosSection.tsx",
+        "src/components/ui/Donut.tsx",
+        "src/components/sections/equity/QuantTrader.tsx",
+        "src/components/sections/model/quant/shared.tsx",
+        "src/components/ui/KpiStrip.tsx",
+        "src/components/sections/equity/LivePerformance.tsx",
+        "src/components/ui/LineChart.tsx",
+        "src/components/sections/model/quant/DeepReport.tsx",
+        "src/components/sections/equity/MacroTrader.tsx"
+      ]
+    },
+    {
+      "workspace": "trading",
+      "group": "PORTFOLIO",
+      "id": "portfolio",
+      "entries": [
+        "ModelSleeveSection"
+      ],
+      "components": [
+        {
+          "name": "ModelSleeveSection",
+          "file": "src/components/sections/model/ModelSleeveSection.tsx",
+          "line": 39,
+          "innerSections": [
+            "Refresh",
+            "Drift from target (held − target)",
+            "Scrollable data table"
+          ]
+        },
+        {
+          "name": "Donut",
+          "file": "src/components/ui/Donut.tsx",
+          "line": 42,
+          "innerSections": []
+        },
+        {
+          "name": "BarList",
+          "file": "src/components/ui/BarList.tsx",
+          "line": 23,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/sections/model/ModelSleeveSection.tsx",
+        "src/components/ui/Donut.tsx",
+        "src/components/ui/BarList.tsx"
+      ]
+    },
+    {
+      "workspace": "trading",
+      "group": "PORTFOLIO",
+      "id": "position-manager",
+      "entries": [
+        "PositionManagerSection"
+      ],
+      "components": [
+        {
+          "name": "PositionManagerSection",
+          "file": "src/components/sections/equity/PositionManagerSection.tsx",
+          "line": 214,
+          "innerSections": [
+            "Positions source",
+            "Scrollable data table",
+            "Mode"
+          ]
+        },
+        {
+          "name": "SummaryCards",
+          "file": "src/components/sections/equity/PositionManagerSection.tsx",
+          "line": 32,
+          "innerSections": []
+        },
+        {
+          "name": "Badge",
+          "file": "src/components/sections/equity/PositionManagerSection.tsx",
+          "line": 21,
+          "innerSections": []
+        },
+        {
+          "name": "Detail",
+          "file": "src/components/sections/equity/PositionManagerSection.tsx",
+          "line": 80,
+          "innerSections": []
+        },
+        {
+          "name": "Signals",
+          "file": "src/components/sections/equity/PositionManagerSection.tsx",
+          "line": 65,
+          "innerSections": []
+        },
+        {
+          "name": "EntryCheck",
+          "file": "src/components/sections/equity/PositionManagerSection.tsx",
+          "line": 131,
+          "innerSections": []
+        },
+        {
+          "name": "Evidence",
+          "file": "src/components/sections/equity/PositionManagerSection.tsx",
+          "line": 169,
+          "innerSections": [
+            "Sum of trade returns per year of capital in trades",
+            "Profit factor in the first / second half of the period"
+          ]
+        }
+      ],
+      "files": [
+        "src/components/sections/equity/PositionManagerSection.tsx"
+      ]
+    },
+    {
+      "workspace": "trading",
+      "group": "PORTFOLIO",
+      "id": "performance-attribution",
+      "entries": [
+        "PerformanceAttributionSection",
+        "PortfolioAnalyticsSection"
+      ],
+      "components": [
+        {
+          "name": "PerformanceAttributionSection",
+          "file": "src/components/sections/equity/PerformanceAttributionSection.tsx",
+          "line": 16,
+          "innerSections": [
+            "Refresh"
+          ]
+        },
+        {
+          "name": "PortfolioAnalyticsSection",
+          "file": "src/components/sections/equity/PortfolioAnalyticsSection.tsx",
+          "line": 209,
+          "innerSections": []
+        },
+        {
+          "name": "Brinson",
+          "file": "src/components/sections/equity/PortfolioAnalyticsSection.tsx",
+          "line": 23,
+          "innerSections": [
+            "Scrollable data table",
+            "The real benchmark"
+          ]
+        },
+        {
+          "name": "Unavailable",
+          "file": "src/components/sections/equity/PortfolioAnalyticsSection.tsx",
+          "line": 19,
+          "innerSections": []
+        },
+        {
+          "name": "TrackingError",
+          "file": "src/components/sections/equity/PortfolioAnalyticsSection.tsx",
+          "line": 68,
+          "innerSections": [
+            "Scrollable data table"
+          ]
+        },
+        {
+          "name": "Liquidity",
+          "file": "src/components/sections/equity/PortfolioAnalyticsSection.tsx",
+          "line": 87,
+          "innerSections": [
+            "Scrollable data table"
+          ]
+        },
+        {
+          "name": "Lots",
+          "file": "src/components/sections/equity/PortfolioAnalyticsSection.tsx",
+          "line": 112,
+          "innerSections": [
+            "Scrollable data table"
+          ]
+        },
+        {
+          "name": "Tca",
+          "file": "src/components/sections/equity/PortfolioAnalyticsSection.tsx",
+          "line": 129,
+          "innerSections": []
+        },
+        {
+          "name": "Ideas",
+          "file": "src/components/sections/equity/PortfolioAnalyticsSection.tsx",
+          "line": 160,
+          "innerSections": [
+            "Scrollable data table"
+          ]
+        },
+        {
+          "name": "HoldingNews",
+          "file": "src/components/sections/equity/PortfolioAnalyticsSection.tsx",
+          "line": 182,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/sections/equity/PerformanceAttributionSection.tsx",
+        "src/components/sections/equity/PortfolioAnalyticsSection.tsx"
+      ]
+    },
+    {
+      "workspace": "trading",
+      "group": "PORTFOLIO",
+      "id": "equity-research",
+      "entries": [
+        "EquityResearchSection"
+      ],
+      "components": [
+        {
+          "name": "EquityResearchSection",
+          "file": "src/components/sections/equity/EquityResearchSection.tsx",
+          "line": 78,
+          "innerSections": [
+            "Sector Allocation"
+          ]
+        },
+        {
+          "name": "Card",
+          "file": "src/components/ui/Card.tsx",
+          "line": 15,
+          "innerSections": []
+        },
+        {
+          "name": "Badge",
+          "file": "src/components/ui/Badge.tsx",
+          "line": 20,
+          "innerSections": []
+        },
+        {
+          "name": "CardHeader",
+          "file": "src/components/ui/Card.tsx",
+          "line": 47,
+          "innerSections": []
+        },
+        {
+          "name": "CardTitle",
+          "file": "src/components/ui/Card.tsx",
+          "line": 55,
+          "innerSections": []
+        },
+        {
+          "name": "CardContent",
+          "file": "src/components/ui/Card.tsx",
+          "line": 63,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/sections/equity/EquityResearchSection.tsx",
+        "src/components/ui/Card.tsx",
+        "src/components/ui/Badge.tsx"
+      ]
+    },
+    {
+      "workspace": "trading",
+      "group": "PORTFOLIO",
+      "id": "business-layer",
+      "entries": [
+        "BusinessLayerSection"
+      ],
+      "components": [
+        {
+          "name": "BusinessLayerSection",
+          "file": "src/components/sections/business/BusinessLayerSection.tsx",
+          "line": 43,
+          "innerSections": [
+            "Scrollable data table"
+          ]
+        },
+        {
+          "name": "LoadingState",
+          "file": "src/components/ui/LoadingState.tsx",
+          "line": 11,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/sections/business/BusinessLayerSection.tsx",
+        "src/components/ui/LoadingState.tsx"
+      ]
+    },
+    {
+      "workspace": "trading",
+      "group": "RISK",
+      "id": "fund-cockpit",
+      "entries": [
+        "FundCockpitSection"
+      ],
+      "components": [
+        {
+          "name": "FundCockpitSection",
+          "file": "src/components/sections/risk/FundCockpitSection.tsx",
+          "line": 553,
+          "innerSections": [
+            "Record today",
+            "Refresh"
+          ]
+        },
+        {
+          "name": "NavTab",
+          "file": "src/components/sections/risk/FundCockpitSection.tsx",
+          "line": 38,
+          "innerSections": [
+            "Factor exposure ($ per 1σ factor move)",
+            "Exposure (share of NAV)"
+          ]
+        },
+        {
+          "name": "Stat",
+          "file": "src/components/sections/risk/FundCockpitSection.tsx",
+          "line": 29,
+          "innerSections": []
+        },
+        {
+          "name": "LineChart",
+          "file": "src/components/ui/LineChart.tsx",
+          "line": 88,
+          "innerSections": [
+            "Period",
+            "Interval",
+            "Custom range",
+            "From",
+            "To"
+          ]
+        },
+        {
+          "name": "LineChartCore",
+          "file": "src/components/ui/LineChart.tsx",
+          "line": 182,
+          "innerSections": []
+        },
+        {
+          "name": "BarList",
+          "file": "src/components/ui/BarList.tsx",
+          "line": 23,
+          "innerSections": []
+        },
+        {
+          "name": "LimitsTab",
+          "file": "src/components/sections/risk/FundCockpitSection.tsx",
+          "line": 136,
+          "innerSections": []
+        },
+        {
+          "name": "RebalanceTab",
+          "file": "src/components/sections/risk/FundCockpitSection.tsx",
+          "line": 218,
+          "innerSections": [
+            "Scrollable data table"
+          ]
+        },
+        {
+          "name": "OrdersTab",
+          "file": "src/components/sections/risk/FundCockpitSection.tsx",
+          "line": 317,
+          "innerSections": [
+            "Order ticker",
+            "Order side",
+            "Order quantity",
+            "Order book",
+            "Order thesis",
+            "Scrollable data table"
+          ]
+        },
+        {
+          "name": "ScorecardTab",
+          "file": "src/components/sections/risk/FundCockpitSection.tsx",
+          "line": 496,
+          "innerSections": [
+            "Scrollable data table"
+          ]
+        }
+      ],
+      "files": [
+        "src/components/sections/risk/FundCockpitSection.tsx",
+        "src/components/ui/LineChart.tsx",
+        "src/components/ui/BarList.tsx"
+      ]
+    },
+    {
+      "workspace": "trading",
+      "group": "RISK",
+      "id": "risk-analytics",
+      "entries": [
+        "RiskAnalyticsSection"
+      ],
+      "components": [
+        {
+          "name": "RiskAnalyticsSection",
+          "file": "src/components/sections/risk/RiskAnalyticsSection.tsx",
+          "line": 90,
+          "innerSections": [
+            "RISK ANALYTICS"
+          ]
+        },
+        {
+          "name": "Card",
+          "file": "src/components/ui/Card.tsx",
+          "line": 15,
+          "innerSections": []
+        },
+        {
+          "name": "Ratio",
+          "file": "src/components/ui/FormattedNumber.tsx",
+          "line": 88,
+          "innerSections": []
+        },
+        {
+          "name": "FormattedNumber",
+          "file": "src/components/ui/FormattedNumber.tsx",
+          "line": 36,
+          "innerSections": []
+        },
+        {
+          "name": "Beta",
+          "file": "src/components/ui/FormattedNumber.tsx",
+          "line": 102,
+          "innerSections": []
+        },
+        {
+          "name": "Badge",
+          "file": "src/components/ui/Badge.tsx",
+          "line": 20,
+          "innerSections": []
+        },
+        {
+          "name": "Correlation",
+          "file": "src/components/ui/FormattedNumber.tsx",
+          "line": 116,
+          "innerSections": []
+        },
+        {
+          "name": "CorrelationHeatmap",
+          "file": "src/components/ui/CorrelationHeatmap.tsx",
+          "line": 38,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/sections/risk/RiskAnalyticsSection.tsx",
+        "src/components/ui/Card.tsx",
+        "src/components/ui/FormattedNumber.tsx",
+        "src/components/ui/Badge.tsx",
+        "src/components/ui/CorrelationHeatmap.tsx"
+      ]
+    },
+    {
+      "workspace": "trading",
+      "group": "RISK",
+      "id": "var-stress",
+      "entries": [
+        "VaRStressSection"
+      ],
+      "components": [
+        {
+          "name": "VaRStressSection",
+          "file": "src/components/sections/risk/VaRStressSection.tsx",
+          "line": 21,
+          "innerSections": [
+            "Refresh",
+            "VaR contribution (95% 1d) — positive adds risk, negative hedges"
+          ]
+        },
+        {
+          "name": "BarList",
+          "file": "src/components/ui/BarList.tsx",
+          "line": 23,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/sections/risk/VaRStressSection.tsx",
+        "src/components/ui/BarList.tsx"
+      ]
+    },
+    {
+      "workspace": "trading",
+      "group": "RISK",
+      "id": "what-if",
+      "entries": [
+        "WhatIfSection"
+      ],
+      "components": [
+        {
+          "name": "WhatIfSection",
+          "file": "src/components/sections/risk/WhatIfSection.tsx",
+          "line": 53,
+          "innerSections": []
+        },
+        {
+          "name": "Bars",
+          "file": "src/components/sections/risk/WhatIfSection.tsx",
+          "line": 35,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/sections/risk/WhatIfSection.tsx"
+      ]
+    },
+    {
+      "workspace": "trading",
+      "group": "RISK",
+      "id": "factor-exposure",
+      "entries": [
+        "FactorExposureSection"
+      ],
+      "components": [
+        {
+          "name": "FactorExposureSection",
+          "file": "src/components/sections/risk/FactorExposureSection.tsx",
+          "line": 25,
+          "innerSections": [
+            "Refresh",
+            "Return impact of a 1σ (annual) move in the factor"
+          ]
+        }
+      ],
+      "files": [
+        "src/components/sections/risk/FactorExposureSection.tsx"
+      ]
+    },
+    {
+      "workspace": "trading",
+      "group": "RISK",
+      "id": "horizon-tension",
+      "entries": [
+        "HorizonTensionSection"
+      ],
+      "components": [
+        {
+          "name": "HorizonTensionSection",
+          "file": "src/components/sections/signals/HorizonTensionSection.tsx",
+          "line": 30,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/sections/signals/HorizonTensionSection.tsx"
+      ]
+    },
+    {
+      "workspace": "trading",
+      "group": "RISK",
+      "id": "risk-parity",
+      "entries": [
+        "RiskParitySection",
+        "AllWeatherPanel"
+      ],
+      "components": [
+        {
+          "name": "RiskParitySection",
+          "file": "src/components/sections/risk/RiskParitySection.tsx",
+          "line": 13,
+          "innerSections": [
+            "Target allocation",
+            "Annualised volatility — the higher, the smaller the weight",
+            "3-month trend (t-stat ≥ 1); does not change the risk-parity weight",
+            "Unlevered: sums to 100%",
+            "Target × leverage — what is held to reach the volatility target"
+          ]
+        },
+        {
+          "name": "Donut",
+          "file": "src/components/ui/Donut.tsx",
+          "line": 42,
+          "innerSections": []
+        },
+        {
+          "name": "BarList",
+          "file": "src/components/ui/BarList.tsx",
+          "line": 23,
+          "innerSections": []
+        },
+        {
+          "name": "AllWeatherPanel",
+          "file": "src/components/markets/BridgewaterViews.tsx",
+          "line": 84,
+          "innerSections": [
+            "Today’s All Weather weights",
+            "Scrollable market data table",
+            "Results — and the point of All Weather: similar returns whatever the environment"
+          ]
+        },
+        {
+          "name": "Frame",
+          "file": "src/components/markets/BridgewaterViews.tsx",
+          "line": 23,
+          "innerSections": []
+        },
+        {
+          "name": "Loading",
+          "file": "src/components/markets/shared.tsx",
+          "line": 197,
+          "innerSections": []
+        },
+        {
+          "name": "ErrorBox",
+          "file": "src/components/markets/shared.tsx",
+          "line": 208,
+          "innerSections": []
+        },
+        {
+          "name": "Panel",
+          "file": "src/components/markets/shared.tsx",
+          "line": 181,
+          "innerSections": []
+        },
+        {
+          "name": "Tile",
+          "file": "src/components/markets/BridgewaterViews.tsx",
+          "line": 14,
+          "innerSections": []
+        },
+        {
+          "name": "LineChart",
+          "file": "src/components/ui/LineChart.tsx",
+          "line": 88,
+          "innerSections": [
+            "Period",
+            "Interval",
+            "Custom range",
+            "From",
+            "To"
+          ]
+        },
+        {
+          "name": "LineChartCore",
+          "file": "src/components/ui/LineChart.tsx",
+          "line": 182,
+          "innerSections": []
+        },
+        {
+          "name": "Ref",
+          "file": "src/components/markets/BridgewaterViews.tsx",
+          "line": 29,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/sections/risk/RiskParitySection.tsx",
+        "src/components/ui/Donut.tsx",
+        "src/components/ui/BarList.tsx",
+        "src/components/markets/BridgewaterViews.tsx",
+        "src/components/markets/shared.tsx",
+        "src/components/ui/LineChart.tsx"
+      ]
+    },
+    {
+      "workspace": "trading",
+      "group": "RISK",
+      "id": "risk-parity-compare",
+      "entries": [
+        "RiskParityCompareSection"
+      ],
+      "components": [
+        {
+          "name": "RiskParityCompareSection",
+          "file": "src/components/sections/risk/RiskParityCompareSection.tsx",
+          "line": 14,
+          "innerSections": [
+            "Refresh",
+            "Sharpe ratio by method (benchmark: 60/40)"
+          ]
+        },
+        {
+          "name": "DataLineagePopover",
+          "file": "src/components/ui/DataLineagePopover.tsx",
+          "line": 31,
+          "innerSections": [
+            "Data lineage"
+          ]
+        },
+        {
+          "name": "Row",
+          "file": "src/components/ui/DataLineagePopover.tsx",
+          "line": 90,
+          "innerSections": []
+        },
+        {
+          "name": "BarList",
+          "file": "src/components/ui/BarList.tsx",
+          "line": 23,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/sections/risk/RiskParityCompareSection.tsx",
+        "src/components/ui/DataLineagePopover.tsx",
+        "src/components/ui/BarList.tsx"
+      ]
+    },
+    {
+      "workspace": "trading",
+      "group": "GOVERNANCE",
+      "id": "fund-governance",
+      "entries": [
+        "GovernanceSection"
+      ],
+      "components": [
+        {
+          "name": "GovernanceSection",
+          "file": "src/components/sections/equity/GovernanceSection.tsx",
+          "line": 522,
+          "innerSections": []
+        },
+        {
+          "name": "CapsCtx",
+          "file": "src/components/sections/equity/GovernanceSection.tsx",
+          "line": 20,
+          "innerSections": []
+        },
+        {
+          "name": "BrandShape",
+          "file": "src/components/layout/FundIdentity.tsx",
+          "line": 10,
+          "innerSections": []
+        },
+        {
+          "name": "Overview",
+          "file": "src/components/sections/equity/GovernanceSection.tsx",
+          "line": 58,
+          "innerSections": [
+            "Fund",
+            "Risk policy",
+            "Board scorecard",
+            "Written mandate"
+          ]
+        },
+        {
+          "name": "Box",
+          "file": "src/components/sections/equity/GovernanceSection.tsx",
+          "line": 45,
+          "innerSections": []
+        },
+        {
+          "name": "KV",
+          "file": "src/components/sections/equity/GovernanceSection.tsx",
+          "line": 53,
+          "innerSections": []
+        },
+        {
+          "name": "LogoUpload",
+          "file": "src/components/sections/equity/GovernanceSection.tsx",
+          "line": 115,
+          "innerSections": []
+        },
+        {
+          "name": "TeamPositions",
+          "file": "src/components/sections/equity/TeamPositions.tsx",
+          "line": 45,
+          "innerSections": [
+            "Remove from position",
+            "seats"
+          ]
+        },
+        {
+          "name": "MyAccess",
+          "file": "src/components/sections/equity/TeamPositions.tsx",
+          "line": 18,
+          "innerSections": []
+        },
+        {
+          "name": "BrokerLink",
+          "file": "src/components/sections/equity/BrokerLink.tsx",
+          "line": 16,
+          "innerSections": [
+            "Scrollable data table"
+          ]
+        },
+        {
+          "name": "Models",
+          "file": "src/components/sections/equity/GovernanceSection.tsx",
+          "line": 224,
+          "innerSections": [
+            "G0 — new research proposal (economic mechanism, target, horizon, dataset, null hypothesis)",
+            "Scrollable data table"
+          ]
+        },
+        {
+          "name": "ModelDetail",
+          "file": "src/components/sections/equity/GovernanceSection.tsx",
+          "line": 143,
+          "innerSections": [
+            "Risk allocation (set before G3)",
+            "Shadow trading (G3 evidence) — the model",
+            "History (research log)"
+          ]
+        },
+        {
+          "name": "Instruments",
+          "file": "src/components/sections/equity/GovernanceSection.tsx",
+          "line": 263,
+          "innerSections": [
+            "Scrollable data table",
+            "Propose an instrument (approved by another person — PM or risk)"
+          ]
+        },
+        {
+          "name": "Controls",
+          "file": "src/components/sections/equity/GovernanceSection.tsx",
+          "line": 298,
+          "innerSections": [
+            "Kill switch",
+            "Incidents",
+            "Reconciliations (positions vs fills ledger; daily T+1 at 06:30 UTC)"
+          ]
+        },
+        {
+          "name": "Monthly",
+          "file": "src/components/sections/equity/GovernanceSection.tsx",
+          "line": 342,
+          "innerSections": [
+            "Risk",
+            "Attribution",
+            "Implementation · research changes · validation"
+          ]
+        },
+        {
+          "name": "Letterhead",
+          "file": "src/components/layout/FundIdentity.tsx",
+          "line": 38,
+          "innerSections": []
+        },
+        {
+          "name": "Budget",
+          "file": "src/components/sections/equity/GovernanceSection.tsx",
+          "line": 402,
+          "innerSections": [
+            "Scrollable data table",
+            "Record an expense (approved by another person — spending authority)"
+          ]
+        },
+        {
+          "name": "Roadmap",
+          "file": "src/components/sections/equity/GovernanceSection.tsx",
+          "line": 433,
+          "innerSections": []
+        },
+        {
+          "name": "Licences",
+          "file": "src/components/sections/equity/GovernanceSection.tsx",
+          "line": 462,
+          "innerSections": [
+            "Scrollable data table"
+          ]
+        },
+        {
+          "name": "BreakEven",
+          "file": "src/components/sections/equity/GovernanceSection.tsx",
+          "line": 498,
+          "innerSections": [
+            "annual operating cash costs (US$)",
+            "management-fee rates",
+            "Scrollable data table"
+          ]
+        }
+      ],
+      "files": [
+        "src/components/sections/equity/GovernanceSection.tsx",
+        "src/components/layout/FundIdentity.tsx",
+        "src/components/sections/equity/TeamPositions.tsx",
+        "src/components/sections/equity/BrokerLink.tsx"
+      ]
+    },
+    {
+      "workspace": "trading",
+      "group": "GOVERNANCE",
+      "id": "system-audit",
+      "entries": [
+        "SystemAuditSection"
+      ],
+      "components": [
+        {
+          "name": "SystemAuditSection",
+          "file": "src/components/sections/macro/SystemAuditSection.tsx",
+          "line": 22,
+          "innerSections": [
+            "Refresh"
+          ]
+        }
+      ],
+      "files": [
+        "src/components/sections/macro/SystemAuditSection.tsx"
+      ]
+    },
+    {
+      "workspace": "trading",
+      "group": "GOVERNANCE",
+      "id": "investment-memo",
+      "entries": [
+        "InvestmentMemoSection"
+      ],
+      "components": [
+        {
+          "name": "InvestmentMemoSection",
+          "file": "src/components/sections/macro/InvestmentMemoSection.tsx",
+          "line": 28,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/sections/macro/InvestmentMemoSection.tsx"
+      ]
+    },
+    {
+      "workspace": "quant",
+      "group": "LAB",
+      "id": "quant-lab",
+      "entries": [
+        "QuantLabSection"
+      ],
+      "components": [
+        {
+          "name": "QuantLabSection",
+          "file": "src/components/sections/model/QuantLabSection.tsx",
+          "line": 33,
+          "innerSections": [
+            "Quant Lab"
+          ]
+        },
+        {
+          "name": "CodeLab",
+          "file": "src/components/sections/model/quant/CodeLab.tsx",
+          "line": 380,
+          "innerSections": [
+            "Run (Ctrl/⌘ + Enter)",
+            "The platform",
+            "Tax withheld at source on dividends of listings in another currency than the account",
+            "Orders rounded to whole board lots (JP 100, HK per stock, TW 1,000 …) at the capital above; small books can",
+            "Stock borrow costs more for thinly traded names: ≥$100m/day the base fee, $20–100m 0.75%, $5–20m 2%, under $5m 5% a year"
+          ]
+        },
+        {
+          "name": "Field",
+          "file": "src/components/sections/model/quant/shared.tsx",
+          "line": 67,
+          "innerSections": []
+        },
+        {
+          "name": "CodeEditor",
+          "file": "src/components/sections/model/quant/CodeLab.tsx",
+          "line": 321,
+          "innerSections": [
+            "Strategy code",
+            "Suggestions"
+          ]
+        },
+        {
+          "name": "QcReport",
+          "file": "src/components/sections/model/quant/CodeLab.tsx",
+          "line": 1032,
+          "innerSections": []
+        },
+        {
+          "name": "LeanResult",
+          "file": "src/components/sections/model/quant/CodeLab.tsx",
+          "line": 1109,
+          "innerSections": []
+        },
+        {
+          "name": "LineChart",
+          "file": "src/components/ui/LineChart.tsx",
+          "line": 88,
+          "innerSections": [
+            "Period",
+            "Interval",
+            "Custom range",
+            "From",
+            "To"
+          ]
+        },
+        {
+          "name": "LineChartCore",
+          "file": "src/components/ui/LineChart.tsx",
+          "line": 182,
+          "innerSections": []
+        },
+        {
+          "name": "LeanOptimizer",
+          "file": "src/components/sections/model/quant/LeanOptimizer.tsx",
+          "line": 26,
+          "innerSections": []
+        },
+        {
+          "name": "ErrorNote",
+          "file": "src/components/sections/model/quant/shared.tsx",
+          "line": 93,
+          "innerSections": []
+        },
+        {
+          "name": "CustomData",
+          "file": "src/components/sections/model/quant/CodeLab.tsx",
+          "line": 1062,
+          "innerSections": [
+            "Scrollable data table"
+          ]
+        },
+        {
+          "name": "ApiHelp",
+          "file": "src/components/sections/model/quant/CodeLab.tsx",
+          "line": 659,
+          "innerSections": []
+        },
+        {
+          "name": "UniverseHelp",
+          "file": "src/components/sections/model/quant/CodeLab.tsx",
+          "line": 690,
+          "innerSections": [
+            "Scrollable data table"
+          ]
+        },
+        {
+          "name": "CodeResults",
+          "file": "src/components/sections/model/quant/CodeLab.tsx",
+          "line": 739,
+          "innerSections": [
+            "Result sections",
+            "Average cost per year (% of capital)",
+            "Latest target (what the model wants)",
+            "Holdings by listing country",
+            "Current allocation"
+          ]
+        },
+        {
+          "name": "KpiStrip",
+          "file": "src/components/ui/KpiStrip.tsx",
+          "line": 8,
+          "innerSections": []
+        },
+        {
+          "name": "Verdict",
+          "file": "src/components/sections/model/quant/CodeLab.tsx",
+          "line": 830,
+          "innerSections": []
+        },
+        {
+          "name": "BarList",
+          "file": "src/components/ui/BarList.tsx",
+          "line": 23,
+          "innerSections": []
+        },
+        {
+          "name": "RecordPanel",
+          "file": "src/components/sections/model/quant/CodeLab.tsx",
+          "line": 886,
+          "innerSections": [
+            "Scrollable data table"
+          ]
+        },
+        {
+          "name": "Validation",
+          "file": "src/components/sections/model/quant/ResearchPanels.tsx",
+          "line": 26,
+          "innerSections": [
+            "Validation"
+          ]
+        },
+        {
+          "name": "Card",
+          "file": "src/components/sections/model/quant/ResearchPanels.tsx",
+          "line": 13,
+          "innerSections": []
+        },
+        {
+          "name": "Optimisation",
+          "file": "src/components/sections/model/quant/CodeLab.tsx",
+          "line": 868,
+          "innerSections": []
+        },
+        {
+          "name": "Heatmap",
+          "file": "src/components/sections/model/quant/ResearchPanels.tsx",
+          "line": 265,
+          "innerSections": [
+            "Parameter sensitivity",
+            "Scrollable data table"
+          ]
+        },
+        {
+          "name": "Variants",
+          "file": "src/components/sections/model/quant/CodeLab.tsx",
+          "line": 932,
+          "innerSections": [
+            "Scrollable data table"
+          ]
+        },
+        {
+          "name": "Capacity",
+          "file": "src/components/sections/model/quant/ResearchPanels.tsx",
+          "line": 57,
+          "innerSections": [
+            "Capacity",
+            "Scrollable data table"
+          ]
+        },
+        {
+          "name": "Risk",
+          "file": "src/components/sections/model/quant/ResearchPanels.tsx",
+          "line": 115,
+          "innerSections": [
+            "Risk of today",
+            "Largest risk contributors (share of risk)",
+            "Risk by sector",
+            "Scrollable data table",
+            "share of the book with its own history in the episode",
+            "Style exposures (z-score of the book)",
+            "Share of risk by factor"
+          ]
+        },
+        {
+          "name": "FactorLens",
+          "file": "src/components/sections/model/quant/CodeLab.tsx",
+          "line": 952,
+          "innerSections": [
+            "Scrollable data table"
+          ]
+        },
+        {
+          "name": "MonteCarlo",
+          "file": "src/components/sections/model/quant/CodeLab.tsx",
+          "line": 978,
+          "innerSections": [
+            "Histogram of simulated CAGR",
+            "Scrollable data table"
+          ]
+        },
+        {
+          "name": "Attribution",
+          "file": "src/components/sections/model/quant/ResearchPanels.tsx",
+          "line": 74,
+          "innerSections": [
+            "Where the return came from",
+            "Sources",
+            "Best contributors",
+            "By sector",
+            "By listing country",
+            "By currency",
+            "Scrollable data table"
+          ]
+        },
+        {
+          "name": "Trades",
+          "file": "src/components/sections/model/quant/ResearchPanels.tsx",
+          "line": 197,
+          "innerSections": [
+            "Trades and orders"
+          ]
+        },
+        {
+          "name": "Charts",
+          "file": "src/components/sections/model/quant/ResearchPanels.tsx",
+          "line": 245,
+          "innerSections": []
+        },
+        {
+          "name": "Signal",
+          "file": "src/components/sections/model/quant/ResearchPanels.tsx",
+          "line": 154,
+          "innerSections": [
+            "Signal research",
+            "Signal research (information coefficient)",
+            "Scrollable data table"
+          ]
+        },
+        {
+          "name": "DeepReport",
+          "file": "src/components/sections/model/quant/DeepReport.tsx",
+          "line": 54,
+          "innerSections": [
+            "Root-mean-square drawdown — punishes long, deep drawdowns",
+            "Growth of 1 (log) and underwater curve",
+            "Rolling 12 months",
+            "All statistics",
+            "Scrollable data table",
+            "Distribution of monthly returns",
+            "Monthly returns",
+            "Crises",
+            "Monte Carlo — annualised return over the next 1, 3 and 5 years (block bootstrap)",
+            "Out-of-sample check — first half vs second half",
+            "Year by year",
+            "By year of entry"
+          ]
+        },
+        {
+          "name": "Pills",
+          "file": "src/components/sections/model/quant/shared.tsx",
+          "line": 78,
+          "innerSections": []
+        },
+        {
+          "name": "Tile",
+          "file": "src/components/sections/model/quant/DeepReport.tsx",
+          "line": 13,
+          "innerSections": []
+        },
+        {
+          "name": "Box",
+          "file": "src/components/sections/model/quant/DeepReport.tsx",
+          "line": 22,
+          "innerSections": []
+        },
+        {
+          "name": "Runs",
+          "file": "src/components/sections/model/quant/Runs.tsx",
+          "line": 15,
+          "innerSections": []
+        },
+        {
+          "name": "Compare",
+          "file": "src/components/sections/model/quant/Runs.tsx",
+          "line": 81,
+          "innerSections": [
+            "Scrollable data table"
+          ]
+        },
+        {
+          "name": "Library",
+          "file": "src/components/sections/model/quant/Library.tsx",
+          "line": 46,
+          "innerSections": [
+            "Scrollable data table"
+          ]
+        },
+        {
+          "name": "Holdings",
+          "file": "src/components/sections/model/quant/Library.tsx",
+          "line": 13,
+          "innerSections": [
+            "Scrollable data table"
+          ]
+        },
+        {
+          "name": "Mine",
+          "file": "src/components/sections/model/QuantLabSection.tsx",
+          "line": 81,
+          "innerSections": []
+        },
+        {
+          "name": "RelValue",
+          "file": "src/components/sections/model/quant/RelValue.tsx",
+          "line": 18,
+          "innerSections": []
+        },
+        {
+          "name": "Pairs",
+          "file": "src/components/sections/model/quant/RelValue.tsx",
+          "line": 36,
+          "innerSections": []
+        },
+        {
+          "name": "PairResult",
+          "file": "src/components/sections/model/quant/RelValue.tsx",
+          "line": 142,
+          "innerSections": [
+            "Scrollable data table"
+          ]
+        },
+        {
+          "name": "MarketMaking",
+          "file": "src/components/sections/model/quant/RelValue.tsx",
+          "line": 193,
+          "innerSections": []
+        },
+        {
+          "name": "MMResult",
+          "file": "src/components/sections/model/quant/RelValue.tsx",
+          "line": 236,
+          "innerSections": [
+            "Scrollable data table"
+          ]
+        },
+        {
+          "name": "Research",
+          "file": "src/components/sections/model/QuantLabSection.tsx",
+          "line": 112,
+          "innerSections": []
+        },
+        {
+          "name": "OptionsResearch",
+          "file": "src/components/sections/model/quant/OptionsResearch.tsx",
+          "line": 60,
+          "innerSections": []
+        },
+        {
+          "name": "Results",
+          "file": "src/components/sections/model/quant/OptionsResearch.tsx",
+          "line": 137,
+          "innerSections": [
+            "Experiment history"
+          ]
+        },
+        {
+          "name": "Card",
+          "file": "src/components/sections/model/quant/OptionsResearch.tsx",
+          "line": 28,
+          "innerSections": []
+        },
+        {
+          "name": "Table",
+          "file": "src/components/sections/model/quant/OptionsResearch.tsx",
+          "line": 38,
+          "innerSections": []
+        },
+        {
+          "name": "StageOne",
+          "file": "src/components/sections/model/quant/OptionsResearch.tsx",
+          "line": 174,
+          "innerSections": []
+        },
+        {
+          "name": "Summary",
+          "file": "src/components/sections/model/quant/OptionsResearch.tsx",
+          "line": 192,
+          "innerSections": [
+            "Did any strategy survive validation?",
+            "Seven systems, identical accounting",
+            "Growth of $1 (development + validation)",
+            "Drawdown",
+            "Limitations"
+          ]
+        },
+        {
+          "name": "Strategies",
+          "file": "src/components/sections/model/quant/OptionsResearch.tsx",
+          "line": 244,
+          "innerSections": [
+            "Chosen on development (2016–2021)",
+            "In-sample, validation, walk-forward",
+            "Cost and model-risk stress (2016–2023)",
+            "Trading",
+            "Parameter sensitivity (development, others at the chosen values)"
+          ]
+        },
+        {
+          "name": "Regimes",
+          "file": "src/components/sections/model/quant/OptionsResearch.tsx",
+          "line": 306,
+          "innerSections": [
+            "Regime models, out of sample (refitted each January, 21-session embargo)",
+            "Gating (pre-declared, not optimised)"
+          ]
+        },
+        {
+          "name": "PortfolioResearch",
+          "file": "src/components/sections/model/quant/OptionsResearch.tsx",
+          "line": 329,
+          "innerSections": [
+            "Maximum positions × risk per trade (combined portfolio)",
+            "Risk budgets, concentration, correlation, Greeks, drawdown control, ranking, allocation"
+          ]
+        },
+        {
+          "name": "DataValidity",
+          "file": "src/components/sections/model/quant/OptionsResearch.tsx",
+          "line": 350,
+          "innerSections": [
+            "The option model against CBOE",
+            "Implied-volatility model vs CBOE volatility indices",
+            "Universe and coverage",
+            "Missing data (documented, never fabricated)",
+            "Look-ahead check (prefix invariance)",
+            "Survivorship (point-in-time members vs today",
+            "Runtime and memory by section"
+          ]
+        },
+        {
+          "name": "Holdout",
+          "file": "src/components/sections/model/quant/OptionsResearch.tsx",
+          "line": 404,
+          "innerSections": [
+            "Protected holdout (2024 → latest data)"
+          ]
+        },
+        {
+          "name": "Registry",
+          "file": "src/components/sections/model/quant/OptionsResearch.tsx",
+          "line": 431,
+          "innerSections": [
+            "Research registry"
+          ]
+        },
+        {
+          "name": "Badge",
+          "file": "src/components/sections/model/quant/OptionsResearch.tsx",
+          "line": 24,
+          "innerSections": []
+        },
+        {
+          "name": "Configs",
+          "file": "src/components/sections/model/quant/OptionsResearch.tsx",
+          "line": 458,
+          "innerSections": [
+            "Export a candidate from the selected experiment",
+            "Candidates",
+            "Production (what the Quant Algorithm reads: GET /api/v1/quant/options-research/configs/production)"
+          ]
+        },
+        {
+          "name": "Performance",
+          "file": "src/components/sections/model/quant/OptionsResearch.tsx",
+          "line": 517,
+          "innerSections": [
+            "Like-for-like measurements (A/B)",
+            "The 10-year, ~3,100-stock global Code Lab backtest — measured before and after optimisation"
+          ]
+        }
+      ],
+      "files": [
+        "src/components/sections/model/QuantLabSection.tsx",
+        "src/components/sections/model/quant/CodeLab.tsx",
+        "src/components/sections/model/quant/shared.tsx",
+        "src/components/ui/LineChart.tsx",
+        "src/components/sections/model/quant/LeanOptimizer.tsx",
+        "src/components/ui/KpiStrip.tsx",
+        "src/components/ui/BarList.tsx",
+        "src/components/sections/model/quant/ResearchPanels.tsx",
+        "src/components/sections/model/quant/DeepReport.tsx",
+        "src/components/sections/model/quant/Runs.tsx",
+        "src/components/sections/model/quant/Library.tsx",
+        "src/components/sections/model/quant/RelValue.tsx",
+        "src/components/sections/model/quant/OptionsResearch.tsx"
+      ]
+    },
+    {
+      "workspace": "quant",
+      "group": "LAB",
+      "id": "strategy-lab",
+      "entries": [
+        "StrategyLabSection"
+      ],
+      "components": [
+        {
+          "name": "StrategyLabSection",
+          "file": "src/components/sections/model/StrategyLabSection.tsx",
+          "line": 28,
+          "innerSections": [
+            "Re-run every model (PM / quant)",
+            "Uses today",
+            "Combined book — risk-balanced weights today",
+            "Deflated Sharpe ratio after every trial (≥ 95% significant)",
+            "Model",
+            "Gross weight"
+          ]
+        },
+        {
+          "name": "LineChart",
+          "file": "src/components/ui/LineChart.tsx",
+          "line": 88,
+          "innerSections": [
+            "Period",
+            "Interval",
+            "Custom range",
+            "From",
+            "To"
+          ]
+        },
+        {
+          "name": "LineChartCore",
+          "file": "src/components/ui/LineChart.tsx",
+          "line": 182,
+          "innerSections": []
+        },
+        {
+          "name": "Donut",
+          "file": "src/components/ui/Donut.tsx",
+          "line": 42,
+          "innerSections": []
+        },
+        {
+          "name": "CorrelationHeatmap",
+          "file": "src/components/ui/CorrelationHeatmap.tsx",
+          "line": 38,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/sections/model/StrategyLabSection.tsx",
+        "src/components/ui/LineChart.tsx",
+        "src/components/ui/Donut.tsx",
+        "src/components/ui/CorrelationHeatmap.tsx"
+      ]
+    },
+    {
+      "workspace": "quant",
+      "group": "LAB",
+      "id": "stock-backtest",
+      "entries": [
+        "StockBacktestSection"
+      ],
+      "components": [
+        {
+          "name": "StockBacktestSection",
+          "file": "src/components/sections/equity/StockBacktestSection.tsx",
+          "line": 39,
+          "innerSections": [
+            "Re-run the backtest (prices cached for a month)",
+            "t-statistic of the mean R",
+            "Share of exits: target / stop / time",
+            "Average gross exposure",
+            "Daily-rebalanced equal weight of the same stocks",
+            "Breakdown",
+            "Deep analysis of the entry model (portfolio of every signal) vs random entries"
+          ]
+        },
+        {
+          "name": "LineChart",
+          "file": "src/components/ui/LineChart.tsx",
+          "line": 88,
+          "innerSections": [
+            "Period",
+            "Interval",
+            "Custom range",
+            "From",
+            "To"
+          ]
+        },
+        {
+          "name": "LineChartCore",
+          "file": "src/components/ui/LineChart.tsx",
+          "line": 182,
+          "innerSections": []
+        },
+        {
+          "name": "DeepAnalysis",
+          "file": "src/components/sections/model/quant/DeepReport.tsx",
+          "line": 29,
+          "innerSections": []
+        },
+        {
+          "name": "ErrorNote",
+          "file": "src/components/sections/model/quant/shared.tsx",
+          "line": 93,
+          "innerSections": []
+        },
+        {
+          "name": "DeepReport",
+          "file": "src/components/sections/model/quant/DeepReport.tsx",
+          "line": 54,
+          "innerSections": [
+            "Root-mean-square drawdown — punishes long, deep drawdowns",
+            "Growth of 1 (log) and underwater curve",
+            "Rolling 12 months",
+            "All statistics",
+            "Scrollable data table",
+            "Distribution of monthly returns",
+            "Monthly returns",
+            "Crises",
+            "Monte Carlo — annualised return over the next 1, 3 and 5 years (block bootstrap)",
+            "Out-of-sample check — first half vs second half",
+            "Year by year",
+            "By year of entry"
+          ]
+        },
+        {
+          "name": "Pills",
+          "file": "src/components/sections/model/quant/shared.tsx",
+          "line": 78,
+          "innerSections": []
+        },
+        {
+          "name": "Tile",
+          "file": "src/components/sections/model/quant/DeepReport.tsx",
+          "line": 13,
+          "innerSections": []
+        },
+        {
+          "name": "Box",
+          "file": "src/components/sections/model/quant/DeepReport.tsx",
+          "line": 22,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/sections/equity/StockBacktestSection.tsx",
+        "src/components/ui/LineChart.tsx",
+        "src/components/sections/model/quant/DeepReport.tsx",
+        "src/components/sections/model/quant/shared.tsx"
+      ]
+    },
+    {
+      "workspace": "quant",
+      "group": "MODEL VALIDATION",
+      "id": "signal-scorecard",
+      "entries": [
+        "SignalScorecardSection"
+      ],
+      "components": [
+        {
+          "name": "SignalScorecardSection",
+          "file": "src/components/sections/signals/SignalScorecardSection.tsx",
+          "line": 28,
+          "innerSections": [
+            "Refresh"
+          ]
+        },
+        {
+          "name": "BarList",
+          "file": "src/components/ui/BarList.tsx",
+          "line": 23,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/sections/signals/SignalScorecardSection.tsx",
+        "src/components/ui/BarList.tsx"
+      ]
+    },
+    {
+      "workspace": "quant",
+      "group": "MODEL VALIDATION",
+      "id": "factor-validation",
+      "entries": [
+        "FactorValidationSection"
+      ],
+      "components": [
+        {
+          "name": "FactorValidationSection",
+          "file": "src/components/sections/signals/FactorValidationSection.tsx",
+          "line": 12,
+          "innerSections": [
+            "Refresh",
+            "In-sample (grey) vs out-of-sample (blue / amber) R²"
+          ]
+        },
+        {
+          "name": "DataLineagePopover",
+          "file": "src/components/ui/DataLineagePopover.tsx",
+          "line": 31,
+          "innerSections": [
+            "Data lineage"
+          ]
+        },
+        {
+          "name": "Row",
+          "file": "src/components/ui/DataLineagePopover.tsx",
+          "line": 90,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/sections/signals/FactorValidationSection.tsx",
+        "src/components/ui/DataLineagePopover.tsx"
+      ]
+    },
+    {
+      "workspace": "quant",
+      "group": "MODEL VALIDATION",
+      "id": "model-agreement",
+      "entries": [
+        "ModelAgreementSection"
+      ],
+      "components": [
+        {
+          "name": "ModelAgreementSection",
+          "file": "src/components/sections/macro/ModelAgreementSection.tsx",
+          "line": 15,
+          "innerSections": [
+            "Scrollable data table"
+          ]
+        },
+        {
+          "name": "ComputedTag",
+          "file": "src/components/ui/ComputedTag.tsx",
+          "line": 20,
+          "innerSections": []
+        },
+        {
+          "name": "SourceTag",
+          "file": "src/components/ui/SourceTag.tsx",
+          "line": 28,
+          "innerSections": []
+        },
+        {
+          "name": "CompositeHistory",
+          "file": "src/components/sections/macro/ModelAgreementSection.tsx",
+          "line": 139,
+          "innerSections": []
+        },
+        {
+          "name": "LineChart",
+          "file": "src/components/ui/LineChart.tsx",
+          "line": 88,
+          "innerSections": [
+            "Period",
+            "Interval",
+            "Custom range",
+            "From",
+            "To"
+          ]
+        },
+        {
+          "name": "LineChartCore",
+          "file": "src/components/ui/LineChart.tsx",
+          "line": 182,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/sections/macro/ModelAgreementSection.tsx",
+        "src/components/ui/ComputedTag.tsx",
+        "src/components/ui/SourceTag.tsx",
+        "src/components/ui/LineChart.tsx"
+      ]
+    },
+    {
+      "workspace": "quant",
+      "group": "MODEL VALIDATION",
+      "id": "factor-decomposition",
+      "entries": [
+        "FactorDecompositionSection"
+      ],
+      "components": [
+        {
+          "name": "FactorDecompositionSection",
+          "file": "src/components/sections/signals/FactorDecompositionSection.tsx",
+          "line": 16,
+          "innerSections": [
+            "Factor exposure (β) with 95% confidence interval"
+          ]
+        },
+        {
+          "name": "CsvButton",
+          "file": "src/components/ui/CsvButton.tsx",
+          "line": 23,
+          "innerSections": [
+            "Export table to CSV"
+          ]
+        },
+        {
+          "name": "ComputedTag",
+          "file": "src/components/ui/ComputedTag.tsx",
+          "line": 20,
+          "innerSections": []
+        },
+        {
+          "name": "SourceTag",
+          "file": "src/components/ui/SourceTag.tsx",
+          "line": 28,
+          "innerSections": []
+        },
+        {
+          "name": "RangePlot",
+          "file": "src/components/ui/RangePlot.tsx",
+          "line": 9,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/sections/signals/FactorDecompositionSection.tsx",
+        "src/components/ui/CsvButton.tsx",
+        "src/components/ui/ComputedTag.tsx",
+        "src/components/ui/SourceTag.tsx",
+        "src/components/ui/RangePlot.tsx"
+      ]
+    },
+    {
+      "workspace": "quant",
+      "group": "DATA",
+      "id": "data-explorer",
+      "entries": [
+        "DataExplorerSection"
+      ],
+      "components": [
+        {
+          "name": "DataExplorerSection",
+          "file": "src/components/sections/macro/DataExplorerSection.tsx",
+          "line": 13,
+          "innerSections": [
+            "Metadata",
+            "Regime Data",
+            "Macro Indicators",
+            "Signals",
+            "Sector Allocation",
+            "Risk Indicators",
+            "Leading Indicators",
+            "Strategy Summary",
+            "Model Agreement",
+            "Policy Transmission",
+            "Investment Memo",
+            "Upcoming Releases"
+          ]
+        },
+        {
+          "name": "ExportBuilder",
+          "file": "src/components/sections/macro/DataExplorerSection.tsx",
+          "line": 202,
+          "innerSections": [
+            "Series ids",
+            "Start date",
+            "Frequency"
+          ]
+        },
+        {
+          "name": "SectionHeader",
+          "file": "src/components/sections/macro/DataExplorerSection.tsx",
+          "line": 40,
+          "innerSections": []
+        },
+        {
+          "name": "JsonDisplay",
+          "file": "src/components/sections/macro/DataExplorerSection.tsx",
+          "line": 69,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/sections/macro/DataExplorerSection.tsx"
+      ]
+    },
+    {
+      "workspace": "quant",
+      "group": "DATA",
+      "id": "data-providers",
+      "entries": [
+        "DataProvidersSection"
+      ],
+      "components": [
+        {
+          "name": "DataProvidersSection",
+          "file": "src/components/sections/macro/DataProvidersSection.tsx",
+          "line": 12,
+          "innerSections": [
+            "Refresh"
+          ]
+        }
+      ],
+      "files": [
+        "src/components/sections/macro/DataProvidersSection.tsx"
+      ]
+    },
+    {
+      "workspace": "quant",
+      "group": "DATA",
+      "id": "system-health",
+      "entries": [
+        "SystemHealthSection"
+      ],
+      "components": [
+        {
+          "name": "SystemHealthSection",
+          "file": "src/components/sections/macro/SystemHealthSection.tsx",
+          "line": 30,
+          "innerSections": [
+            "Refresh",
+            "Scrollable data table"
+          ]
+        }
+      ],
+      "files": [
+        "src/components/sections/macro/SystemHealthSection.tsx"
+      ]
+    },
+    {
+      "workspace": "pe",
+      "group": "Tools",
+      "id": "workbench",
+      "entries": [
+        "Workbench"
+      ],
+      "components": [
+        {
+          "name": "Workbench",
+          "file": "src/components/pe/Workbench.tsx",
+          "line": 28,
+          "innerSections": [
+            "Deal input sections",
+            "Target · reported base",
+            "Entry & fees",
+            "Financing",
+            "Remove",
+            "Operating plan",
+            "Cases",
+            "Exit & returns",
+            "Where the assumptions come from"
+          ]
+        },
+        {
+          "name": "NumField",
+          "file": "src/components/pe/peShared.tsx",
+          "line": 80,
+          "innerSections": []
+        },
+        {
+          "name": "Kpi",
+          "file": "src/components/pe/peShared.tsx",
+          "line": 104,
+          "innerSections": []
+        },
+        {
+          "name": "Card",
+          "file": "src/components/pe/peShared.tsx",
+          "line": 114,
+          "innerSections": []
+        },
+        {
+          "name": "DealDevelopment",
+          "file": "src/components/pe/DealDevelopment.tsx",
+          "line": 3,
+          "innerSections": [
+            "Quality of earnings",
+            "Tax structure · explicit assumptions",
+            "GBP deal currency required; excludes worldwide debt cap and group allocations",
+            "Interest-cap basis",
+            "Lender terms & seasonal cash",
+            "Diligence checklist"
+          ]
+        },
+        {
+          "name": "Results",
+          "file": "src/components/pe/Workbench.tsx",
+          "line": 275,
+          "innerSections": [
+            "Cases",
+            "Scrollable data table",
+            "Value creation (equity gain)",
+            "Sources & uses",
+            "Debt paydown",
+            "Operating model, credit and covenants",
+            "IRR sensitivities"
+          ]
+        },
+        {
+          "name": "UnderwritingResults",
+          "file": "src/components/pe/DealDevelopment.tsx",
+          "line": 55,
+          "innerSections": [
+            "Underwriting review"
+          ]
+        },
+        {
+          "name": "IrrGrid",
+          "file": "src/components/pe/peShared.tsx",
+          "line": 127,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/pe/Workbench.tsx",
+        "src/components/pe/peShared.tsx",
+        "src/components/pe/DealDevelopment.tsx"
+      ]
+    },
+    {
+      "workspace": "pe",
+      "group": "Tools",
+      "id": "pipeline",
+      "entries": [
+        "Pipeline"
+      ],
+      "components": [
+        {
+          "name": "Pipeline",
+          "file": "src/components/pe/Pipeline.tsx",
+          "line": 8,
+          "innerSections": [
+            "Search deals",
+            "Filter deal stage",
+            "Add note"
+          ]
+        }
+      ],
+      "files": [
+        "src/components/pe/Pipeline.tsx"
+      ]
+    },
+    {
+      "workspace": "pe",
+      "group": "Tools",
+      "id": "waterfall",
+      "entries": [
+        "Waterfall"
+      ],
+      "components": [
+        {
+          "name": "Waterfall",
+          "file": "src/components/pe/FundTools.tsx",
+          "line": 32,
+          "innerSections": [
+            "Fund cash flows and terms",
+            "Tiers",
+            "Each distribution",
+            "Scrollable data table"
+          ]
+        },
+        {
+          "name": "Card",
+          "file": "src/components/pe/peShared.tsx",
+          "line": 114,
+          "innerSections": []
+        },
+        {
+          "name": "FlowBox",
+          "file": "src/components/pe/FundTools.tsx",
+          "line": 21,
+          "innerSections": []
+        },
+        {
+          "name": "NumField",
+          "file": "src/components/pe/peShared.tsx",
+          "line": 80,
+          "innerSections": []
+        },
+        {
+          "name": "Kpi",
+          "file": "src/components/pe/peShared.tsx",
+          "line": 104,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/pe/FundTools.tsx",
+        "src/components/pe/peShared.tsx"
+      ]
+    },
+    {
+      "workspace": "pe",
+      "group": "Tools",
+      "id": "performance",
+      "entries": [
+        "Performance"
+      ],
+      "components": [
+        {
+          "name": "Performance",
+          "file": "src/components/pe/FundTools.tsx",
+          "line": 93,
+          "innerSections": [
+            "Fund cash flows"
+          ]
+        },
+        {
+          "name": "Card",
+          "file": "src/components/pe/peShared.tsx",
+          "line": 114,
+          "innerSections": []
+        },
+        {
+          "name": "FlowBox",
+          "file": "src/components/pe/FundTools.tsx",
+          "line": 21,
+          "innerSections": []
+        },
+        {
+          "name": "NumField",
+          "file": "src/components/pe/peShared.tsx",
+          "line": 80,
+          "innerSections": []
+        },
+        {
+          "name": "Kpi",
+          "file": "src/components/pe/peShared.tsx",
+          "line": 104,
+          "innerSections": []
+        }
+      ],
+      "files": [
+        "src/components/pe/FundTools.tsx",
+        "src/components/pe/peShared.tsx"
+      ]
+    }
+  ],
+  "marketsInventory": "markets_page_inventory_2026-10-29.json",
+  "unmapped": []
+}

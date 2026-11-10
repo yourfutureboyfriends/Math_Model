@@ -1,22 +1,26 @@
+"""Celery tasks: market data, economic indicators, COT and volatility-surface refreshes."""
 # ═══════════════════════════════════════════════════════════════════════════════
 # Celery Pipeline Tasks — Data ingestion and updates
 # ═══════════════════════════════════════════════════════════════════════════════
 
 import logging
 import os
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Optional, Dict, Any
 
 import asyncpg
 import yfinance as yf
 from fredapi import Fred
-from celery_app import app
+from api.celery_app import app
 
 logger = logging.getLogger(__name__)
 
-# Environment
-FRED_API_KEY = os.getenv("FRED_API_KEY", "")
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://macro:macro_terminal_secure_2024@localhost:5432/macro_terminal")
+# Import from centralized config
+from api.config import FRED_API_KEY, DATABASE_URL
+
+# Fallback for backward compatibility
+if not FRED_API_KEY:
+    FRED_API_KEY = os.getenv("FRED_API_KEY", "")
 
 
 async def get_db_pool():
@@ -187,7 +191,6 @@ def check_system_health() -> Dict[str, Any]:
     Runs every minute
     """
     import psutil
-    import time
 
     metrics = {
         "timestamp": datetime.utcnow().isoformat(),

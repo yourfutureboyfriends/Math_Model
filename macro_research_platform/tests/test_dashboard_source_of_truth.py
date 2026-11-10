@@ -126,15 +126,21 @@ class TestDashboardSourceOfTruth:
         df = pd.read_parquet(processed_path)
         series_count = len([c for c in df.columns if not c.startswith('_')])
 
-        # Minimum requirements
-        MIN_TOTAL_SERIES = 12
-        MIN_CORE_SERIES = 8
+        # Minimum requirements (mirrors tests/data_correctness/test_data_correctness.py)
+        MIN_CORE_MACRO_SERIES = 8
+        MIN_MARKET_RISK_SERIES = 4
+        MIN_TOTAL_SERIES = MIN_CORE_MACRO_SERIES + MIN_MARKET_RISK_SERIES  # 12
 
-        # If live mode with sufficient series, allocation should be allowed
-        has_enough_series = series_count >= MIN_TOTAL_SERIES
+        if series_count < MIN_TOTAL_SERIES:
+            pytest.skip(f"{series_count}/{MIN_TOTAL_SERIES} series — allocation not expected")
 
-        if has_enough_series:
-            assert True, f"Live mode with {series_count} series should allow allocation"
+        # Live mode with enough series must actually produce an allocation. This used to
+        # `assert True` inside the branch, so it passed whether or not anything was allocated
+        # and the series count it computed was never used.
+        sector_scores = model_results.get("sector_scores") or {}
+        sector_signals = model_results.get("sector_signals") or {}
+        assert sector_scores, f"live mode with {series_count} series produced no sector_scores"
+        assert sector_signals, f"live mode with {series_count} series produced no sector_signals"
 
 
 class TestDashboardDoesNotUseStaleFallback:
