@@ -8,7 +8,7 @@ const QUESTION='Will an NBER recession be under way at any point in the next 12 
 const NOTE='Answer known 12 months later plus the NBER announcement lag.';
 const TITLE='US recession within 12 months';
 
-type ChartOption={series?:Array<{type?:string}>;tooltip?:{formatter:(p:{value:number[]})=>string}};
+type ChartOption={series?:Array<{type?:string;data?:unknown[]}>;tooltip?:{formatter:(p:{value:number[]})=>string}};
 const charts=vi.hoisted(()=>({options:[] as ChartOption[]}));
 vi.mock('@/hooks/useNeuralStream',()=>({useNeuralStream:()=>({status:'open',error:null,reconnects:0,gaps:{}})}));
 vi.mock('@/context/AuthContext',()=>({useAuth:()=>({token:'t',user:{username:'ui',role:'quant'},isAuthenticated:true})}));
@@ -57,6 +57,10 @@ afterEach(()=>{act(()=>root.unmount());host.remove();mlQueryClient.clear();local
 const settle=async(turns=10)=>{for(let i=0;i<turns;i++)await act(async()=>{await new Promise((r)=>setTimeout(r,0));});};
 const mount=async()=>{await act(async()=>root.render(<MlPage/>));await settle();};
 const cellWithTitle=()=>[...host.querySelectorAll('td span')].find((s)=>s.textContent===TITLE);
+// Charts push an option on every render, so read the most recent one that matches.
+const lastChart=(pred:(o:ChartOption)=>boolean)=>[...charts.options].reverse().find(pred);
+const stat=(label:string)=>[...host.querySelectorAll('.ml-stat')]
+ .find((d)=>d.querySelector('.ml-stat-label')?.textContent===label)?.querySelector('.ml-stat-value')?.textContent;
 
 it('shows the event a task is trained on beside its short title',async()=>{
  seed(true);await mount();
@@ -96,4 +100,36 @@ it('puts the question above every probability in the model lab',async()=>{
  expect(host.textContent).toContain(`Leaderboard — ${TITLE}`);
  expect(host.textContent).toContain('at any point in the next 12 months');
  expect(host.textContent).toContain(NOTE);
+});
+
+it('does not report a model count or a promotion count it was not given',async()=>{
+ // models.length || 9 asserted the engine's nine-model ladder while nothing had trained, and the
+ // promotion total read 0 before the registry had answered at all.
+ seed(true);
+ routes['/api/v1/ml/tasks']={tasks:[{task:'recession_12m',title:TITLE,ready:false}]};
+ routes['/api/v1/ml/registry']={recent_forecasts:[],retrains:[],stages:[]};
+ await mount();
+ expect(stat('Models per task')).toBe('—');
+ expect(stat('Promotions')).toBe('—');
+ expect(host.textContent).not.toContain('9');
+});
+
+it('counts promotions once the registry has actually answered',async()=>{
+ seed(true);
+ routes['/api/v1/ml/registry']={promotions:[{task:'recession_12m',model:'network',active:true}],recent_forecasts:[],retrains:[],stages:[]};
+ await mount();
+ expect(stat('Promotions')).toBe('1');
+});
+
+it('plots an unrecorded skill as no bar rather than as skill of zero',async()=>{
+ // A bar sitting exactly on the zero line reads as the specific finding "no better than the base
+ // rate", which is not the same as "not measured".
+ seed(true);
+ routes['/api/v1/ml/tasks']={tasks:[{...summary(true),signal:{probability:0.18,model:'champion',skill_vs_base_rate:null,useful:false}}]};
+ await mount();
+ const bar=lastChart((o)=>o?.series?.[0]?.type==='bar');
+ expect(bar).toBeTruthy();
+ const data=JSON.stringify(bar!.series![0].data);
+ expect(data).toContain('"value":null');
+ expect(data).not.toContain('"value":0');
 });

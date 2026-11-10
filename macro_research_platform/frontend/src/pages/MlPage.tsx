@@ -130,9 +130,9 @@ function Overview({ tasks }: { tasks: any[] | undefined }) {
     <div className="space-y-2.5">
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2.5">
         <Stat label="Tasks live" value={`${ready.length}/${rows.length}`} delta={ready.length < rows.length ? 'training or queued' : 'all trained this month'} />
-        <Stat label="Models per task" value={models.length || 9} delta="simple → deep, walk-forward" />
+        <Stat label="Models per task" value={models.length || '—'} delta={models.length ? 'simple → deep, walk-forward' : 'none trained yet'} />
         <Stat label="Signals with skill" value={`${ready.filter((t) => t.signal?.useful).length}/${ready.length}`} tone="good" delta="beat the base rate out of sample" />
-        <Stat label="Promotions" value={reg.data?.promotions?.filter((p:any)=>p.active!==false).length ?? 0} delta="challengers serving" />
+        <Stat label="Promotions" value={reg.data?.promotions ? reg.data.promotions.filter((p:any)=>p.active!==false).length : '—'} delta="challengers serving" />
         <Stat label="Forecasts logged" value={reg.data ? new Set(reg.data.recent_forecasts.map((r: any) => `${r.task}${r.month}`)).size : '—'} delta="task-months, never rewritten" />
         <Stat label="Data warnings" value={warnings} tone={warnings ? 'warn' : 'good'} delta="inputs out of range or shifted" />
       </div>
@@ -152,12 +152,15 @@ function Overview({ tasks }: { tasks: any[] | undefined }) {
           {ready.length ? <EChart option={heat} height={300} ariaLabel="Heatmap of probabilities by task and model"
             onReady={(c) => c.on('click', (p: any) => { setMlTask(rows[p.value[1]].task); setMlTab('lab'); })} /> : <Skeleton h={300} />}
         </Panel></div>
-        <div style={span(5)} className="ml-span-5"><Panel title="Skill vs the base rate — served model per task" sub="Out-of-sample Brier skill; right of zero beats always guessing the average.">
-          {ready.length ? <EChart height={300} ariaLabel="Skill by task" option={(() => { const t = chartTheme(); const d = ready.map((r) => ({ name: r.title, v: r.signal.skill_vs_base_rate ?? 0 }));
+        <div style={span(5)} className="ml-span-5"><Panel title="Skill vs the base rate — served model per task" sub="Out-of-sample Brier skill; right of zero beats always guessing the average. A task with no bar has no walk-forward skill recorded yet — that is not skill of zero.">
+          {ready.length ? <EChart height={300} ariaLabel="Skill by task" option={(() => { const t = chartTheme();
+            // An unrecorded skill plots as no bar. Defaulting it to 0 drew a bar exactly on the
+            // zero line, which reads as the specific claim "no better than the base rate".
+            const d = ready.map((r) => ({ name: r.title, v: r.signal.skill_vs_base_rate ?? null }));
             return { grid: { left: 210, right: 20, top: 10, bottom: 30 }, tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, valueFormatter: (v: number) => skillText(v) }, toolbox: { show: false }, legend: { show: false },
               xAxis: { type: 'value', ...axisStyle(t), axisLabel: { ...axisStyle(t).axisLabel, formatter: (v: number) => `${(v * 100).toFixed(0)}%` } },
               yAxis: { type: 'category', data: d.map((x) => x.name), inverse: true, ...axisStyle(t) },
-              series: [{ type: 'bar', data: d.map((x) => ({ value: x.v, itemStyle: { color: x.v >= 0 ? t.series[0] : t.red, borderRadius: x.v >= 0 ? [0, 4, 4, 0] : [4, 0, 0, 4] } })), barMaxWidth: 16,
+              series: [{ type: 'bar', data: d.map((x) => ({ value: x.v, itemStyle: { color: x.v === null ? t.muted : x.v >= 0 ? t.series[0] : t.red, borderRadius: x.v !== null && x.v < 0 ? [4, 0, 0, 4] : [0, 4, 4, 0] } })), barMaxWidth: 16,
                 markLine: { symbol: 'none', data: [{ xAxis: 0 }], lineStyle: { color: t.mutedText }, label: { show: false } } }] }; })()} /> : <Skeleton h={300} />}
         </Panel></div>
       </div>
